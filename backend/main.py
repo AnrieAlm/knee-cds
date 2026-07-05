@@ -6,6 +6,7 @@ from fastapi.templating import Jinja2Templates
 import google.oauth2.id_token
 from google.auth.transport import requests as google_requests
 from backend import store
+from fastapi import HTTPException
 
 app = FastAPI(
     title="Knee CDS API",
@@ -54,6 +55,7 @@ async def index(request: Request):
     return templates.TemplateResponse(request, "index.html", {"cases": store.list_cases()})
 
 
+
 @app.get("/cases/new")
 async def new_case_form(request: Request):
     if not require_user(request):
@@ -71,6 +73,16 @@ async def new_case_submit(request: Request):
     store.create_case(form["patient_label"])
     return RedirectResponse("/", status_code=303)
 
+@app.get("/cases/{case_id}")
+async def view_case(request: Request, case_id: str):
+    if not require_user(request):
+        return RedirectResponse("/login")
+    
+    case = store.get_case(case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+    
+    return templates.TemplateResponse(request, "case_detail.html", {"case": case})
 
 @app.get("/api/status")
 async def status():

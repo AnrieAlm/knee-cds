@@ -4,4 +4,4 @@ from firebase_admin import credentials, firestore
 cred = credentials.Certificate("backend/secrets/firebase-service-account.json")
 firebase_admin.initialize_app(cred)
 
-db = firestore.client()
+db = firestore.client(database_id="anriel-01")
