@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Cases · Cygnus{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h3">Cases</h1>
+    <a href="/cases/new" class="btn btn-primary">+ New Case</a>
+</div>
+
+<div class="list-group">
+    {% for case in cases %}
+    <a href="/cases/{{ case.id }}" class="list-group-item list-group-item-action">
+        <div class="d-flex justify-content-between">
+            <span>{{ case.patient_label }}</span>
+            <small class="text-muted">{{ case.created_at }}</small>
+        </div>
+    </a>
+    {% else %}
+    <p class="text-muted">No cases yet.</p>
+    {% endfor %}
+</div>
+{% endblock %}

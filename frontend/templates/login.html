@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Login · Cygnus{% endblock %}
+{% block content %}
+<script type="module" src="{{ url_for('static', path='/js/firebase-login.js') }}"></script>
+
+<div class="d-flex justify-content-center">
+    <div class="card p-4" style="max-width: 360px; width: 100%;">
+        <h1 class="h4 mb-3 text-center">Cygnus Login</h1>
+
+        <div id="login-box">
+            <div class="mb-2">
+                <label class="form-label">Email</label>
+                <input type="email" id="email" class="form-control">
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Password</label>
+                <input type="password" id="password" class="form-control">
+            </div>
+            <div class="d-grid gap-2">
+                <button id="login" class="btn btn-primary">Login</button>
+                <button id="sign-up" class="btn btn-outline-secondary">Sign Up</button>
+            </div>
+        </div>
+
+        <p id="login-error" class="text-danger mt-3 mb-0"></p>
+    </div>
+</div>
+{% endblock %}
