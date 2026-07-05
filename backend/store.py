@@ -1,24 +1,24 @@
-from itertools import count
 from datetime import date
+from backend.firebase_init import db
 
-_id_counter = count(1)
-_cases = {}
+_collection = db.collection("cases")
 
 
 def create_case(patient_label: str):
-    case_id = next(_id_counter)
+    doc_ref = _collection.document()
     case = {
-        "id": case_id,
+        "id": doc_ref.id,
         "patient_label": patient_label,
         "created_at": date.today().isoformat(),
     }
-    _cases[case_id] = case
+    doc_ref.set(case)
     return case
 
 
 def list_cases():
-    return list(_cases.values())
+    return [doc.to_dict() for doc in _collection.stream()]
 
 
-def get_case(case_id: int):
-    return _cases.get(case_id)
+def get_case(case_id: str):
+    doc = _collection.document(case_id).get()
+    return doc.to_dict() if doc.exists else None
