@@ -137,3 +137,5 @@ yarl==1.24.2
 zstandard==0.25.0
 google-auth
 firebase-admin
+firebase-admin
+python-multipart

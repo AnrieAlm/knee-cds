@@ -5,6 +5,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 import google.oauth2.id_token
 from google.auth.transport import requests as google_requests
+from backend import store
 
 app = FastAPI(
     title="Knee CDS API",
@@ -35,6 +36,11 @@ def validate_firebase_token(id_token):
         return None
 
 
+def require_user(request: Request):
+    id_token = request.cookies.get("token")
+    return validate_firebase_token(id_token)
+
+
 @app.get("/login")
 async def login(request: Request):
     return templates.TemplateResponse(request, "login.html")
@@ -42,16 +48,28 @@ async def login(request: Request):
 
 @app.get("/")
 async def index(request: Request):
-    id_token = request.cookies.get("token")
-    user_token = validate_firebase_token(id_token)
-    if not user_token:
+    if not require_user(request):
         return RedirectResponse("/login")
 
-    dummy_cases = [
-        {"id": 1, "patient_label": "Case #1 — R knee, acute", "created_at": "2026-07-05"},
-        {"id": 2, "patient_label": "Case #2 — L knee, chronic", "created_at": "2026-07-04"},
-    ]
-    return templates.TemplateResponse(request, "index.html", {"cases": dummy_cases})
+    return templates.TemplateResponse(request, "index.html", {"cases": store.list_cases()})
+
+
+@app.get("/cases/new")
+async def new_case_form(request: Request):
+    if not require_user(request):
+        return RedirectResponse("/login")
+
+    return templates.TemplateResponse(request, "new_case.html")
+
+
+@app.post("/cases/new")
+async def new_case_submit(request: Request):
+    if not require_user(request):
+        return RedirectResponse("/login")
+
+    form = await request.form()
+    store.create_case(form["patient_label"])
+    return RedirectResponse("/", status_code=303)
 
 
 @app.get("/api/status")
