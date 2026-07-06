@@ -30,45 +30,54 @@ window.addEventListener("load", function () {
     const app = initializeApp(firebaseConfig)
     const auth = getAuth()
 
-    document.getElementById("sign-up").addEventListener('click', function () {
-        const email = document.getElementById("email").value
-        const password = document.getElementById("password").value
+    const signUpBtn = document.getElementById("sign-up");
+    if (signUpBtn) {
+        signUpBtn.addEventListener('click', function () {
+            const email = document.getElementById("email").value
+            const password = document.getElementById("password").value
+            createUserWithEmailAndPassword(auth, email, password)
+                .then((userCredential) => {
+                    userCredential.user.getIdToken().then((token) => {
+                        document.cookie = "token=" + token + ";path=/;SameSite=Strict";
+                        window.location = "/";
+                    });
+                })
+                .catch((error) => {
+                    document.getElementById("login-error").textContent = error.message;
+                })
+        })
+    }
 
-        createUserWithEmailAndPassword(auth, email, password)
-            .then((userCredential) => {
-                userCredential.user.getIdToken().then((token) => {
-                    document.cookie = "token=" + token + ";path=/;SameSite=Strict";
-                    window.location = "/";
+    const loginBtn = document.getElementById("login");
+    if (loginBtn) {
+        loginBtn.addEventListener('click', function () {
+            const email = document.getElementById("email").value
+            const password = document.getElementById("password").value
+            signInWithEmailAndPassword(auth, email, password)
+                .then((userCredential) => {
+                    userCredential.user.getIdToken().then((token) => {
+                        document.cookie = "token=" + token + ";path=/;SameSite=Strict";
+                        window.location = "/";
+                    });
+                })
+                .catch((error) => {
+                    document.getElementById("login-error").textContent = error.message;
                 });
-            })
-            .catch((error) => {
-                document.getElementById("login-error").textContent = error.message;
-            })
-    })
+        });
+    }
 
-    document.getElementById("login").addEventListener('click', function () {
-        const email = document.getElementById("email").value
-        const password = document.getElementById("password").value
-
-        signInWithEmailAndPassword(auth, email, password)
-            .then((userCredential) => {
-                userCredential.user.getIdToken().then((token) => {
-                    document.cookie = "token=" + token + ";path=/;SameSite=Strict";
-                    window.location = "/";
-                });
-            })
-            .catch((error) => {
-                document.getElementById("login-error").textContent = error.message;
+    const signOutBtn = document.getElementById("sign-out");
+    if (signOutBtn) {
+        signOutBtn.addEventListener('click', function () {
+            signOut(auth).then(() => {
+                document.cookie = "token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+                window.location = "/login";
             });
-    });
-    document.getElementById("sign-out").addEventListener('click', function () {
-    signOut(auth).then(() => {
-        document.cookie = "token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
-        window.location = "/login";
-    });
-});
+        });
+    }
 
-onAuthStateChanged(auth, (user) => {
-    document.getElementById("sign-out").hidden = !user;
-});
+    onAuthStateChanged(auth, (user) => {
+        const btn = document.getElementById("sign-out");
+        if (btn) btn.hidden = !user;
+    });
 });

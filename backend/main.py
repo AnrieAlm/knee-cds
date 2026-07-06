@@ -82,11 +82,11 @@ async def view_case(request: Request, case_id: str):
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
 
-    return RedirectResponse(f"/cases/{case_id}/intake")
+    return RedirectResponse(f"/cases/{case_id}/history")
 
 
 @app.get("/cases/{case_id}/history")
-async def case_intake(request: Request, case_id: str):
+async def case_history(request: Request, case_id: str):
     if not require_user(request):
         return RedirectResponse("/login")
 
@@ -94,7 +94,7 @@ async def case_intake(request: Request, case_id: str):
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
 
-    return templates.TemplateResponse(request, "case_intake.html", {"case": case, "active_tab": "intake"})
+    return templates.TemplateResponse(request, "case_history.html", {"case": case, "active_tab": "history"})
 
 
 @app.get("/cases/{case_id}/exam")
