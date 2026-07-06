@@ -77,12 +77,48 @@ async def new_case_submit(request: Request):
 async def view_case(request: Request, case_id: str):
     if not require_user(request):
         return RedirectResponse("/login")
-    
+
     case = store.get_case(case_id)
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
-    
-    return templates.TemplateResponse(request, "case_detail.html", {"case": case})
+
+    return RedirectResponse(f"/cases/{case_id}/intake")
+
+
+@app.get("/cases/{case_id}/history")
+async def case_intake(request: Request, case_id: str):
+    if not require_user(request):
+        return RedirectResponse("/login")
+
+    case = store.get_case(case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    return templates.TemplateResponse(request, "case_intake.html", {"case": case, "active_tab": "intake"})
+
+
+@app.get("/cases/{case_id}/exam")
+async def case_exam(request: Request, case_id: str):
+    if not require_user(request):
+        return RedirectResponse("/login")
+
+    case = store.get_case(case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    return templates.TemplateResponse(request, "case_exam.html", {"case": case, "active_tab": "exam"})
+
+
+@app.get("/cases/{case_id}/summary")
+async def case_summary(request: Request, case_id: str):
+    if not require_user(request):
+        return RedirectResponse("/login")
+
+    case = store.get_case(case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    return templates.TemplateResponse(request, "case_summary.html", {"case": case, "active_tab": "summary"})
 
 @app.get("/api/status")
 async def status():
