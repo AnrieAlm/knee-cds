@@ -1,3 +1,5 @@
+from dotenv import load_dotenv
+load_dotenv()
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
@@ -7,6 +9,8 @@ import google.oauth2.id_token
 from google.auth.transport import requests as google_requests
 from backend import store
 from fastapi import HTTPException
+from dotenv import load_dotenv
+load_dotenv()
 
 app = FastAPI(
     title="Knee CDS API",
