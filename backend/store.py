@@ -112,3 +112,15 @@ def _clean(doc):
         doc = dict(doc)
         del doc["_id"]
     return doc
+
+def save_assessment(case_id: str, assessment: dict):
+    """
+    Save the deterministic assessment result onto the case document.
+    Overwrites any previous assessment for this case (re-running the exam
+    replaces the result). This is separate from agentLog, which is append-only.
+    """
+    _collection.find_one_and_update(
+        {"id": case_id},
+        {"$set": {"assessment": assessment}},
+    )
+    return assessment

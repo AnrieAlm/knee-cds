@@ -9,8 +9,10 @@ import google.oauth2.id_token
 from google.auth.transport import requests as google_requests
 from backend import store
 from fastapi import HTTPException
-from dotenv import load_dotenv
-load_dotenv()
+import starlette.status as status
+from backend.rules.ottawa import apply_ottawa_knee_rule, OttawaInput
+from backend.rules.pittsburgh import apply_pittsburgh_knee_rule, PittsburghInput
+from backend.safety.red_flags import screen_red_flags, RedFlagInput
 
 app = FastAPI(
     title="Knee CDS API",
@@ -125,10 +127,103 @@ async def case_summary(request: Request, case_id: str):
     return templates.TemplateResponse(request, "case_summary.html", {"case": case, "active_tab": "summary"})
 
 @app.get("/api/status")
-async def status():
+async def api_status():
     return {"status": "ok", "message": "Knee CDS API running"}
 
 
 @app.get("/health")
 async def health():
     return {"status": "healthy"}
+
+# the POST route — deterministic layer only (Option B), no LLM here
+@app.post("/cases/{case_id}/exam", response_class=RedirectResponse)
+async def case_exam_submit(request: Request, case_id: str):
+    id_token = request.cookies.get("token")
+    user_token = validate_firebase_token(id_token)
+    if not user_token:
+        return RedirectResponse("/")
+
+    case = store.get_case(case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    form = await request.form()
+
+    # helper: an unchecked checkbox is absent from the form, so
+    # "present" means True and "absent" means False.
+    def checked(field_name):
+        return field_name in form
+
+    # age comes in as a string; convert to int (default 0 if blank)
+    age_str = form.get("age", "0")
+    try:
+        age = int(age_str)
+    except ValueError:
+        age = 0
+
+    # --- build the red-flag input from the form ---
+    red_flag_input = RedFlagInput(
+        suspected_dvt=checked("suspected_dvt"),
+        pulseless_limb=checked("pulseless_limb"),
+        fever_with_joint_pain=checked("fever_with_joint_pain"),
+        hot_swollen_joint=checked("hot_swollen_joint"),
+        recent_infection=checked("recent_infection"),
+        significant_trauma=checked("significant_trauma"),
+        unable_to_weight_bear=checked("unable_to_weight_bear"),
+        bony_tenderness=checked("bony_tenderness"),
+        unexplained_weight_loss=checked("unexplained_weight_loss"),
+        night_pain_at_rest=checked("night_pain_at_rest"),
+        history_of_cancer=checked("history_of_cancer"),
+        foot_drop=checked("foot_drop"),
+        saddle_anaesthesia=checked("saddle_anaesthesia"),
+        compartment_syndrome_signs=checked("compartment_syndrome_signs"),
+    )
+
+    # --- build the Ottawa input ---
+    ottawa_input = OttawaInput(
+        age=age,
+        isolated_patella_tenderness=checked("isolated_patella_tenderness"),
+        fibula_head_tenderness=checked("fibula_head_tenderness"),
+        unable_to_flex_90=checked("unable_to_flex_90"),
+        unable_to_weight_bear=checked("unable_to_weight_bear"),
+    )
+
+    # --- build the Pittsburgh input ---
+    pittsburgh_input = PittsburghInput(
+        mechanism_blunt_trauma_or_fall=checked("mechanism_blunt_trauma_or_fall"),
+        age=age,
+        unable_to_weight_bear=checked("unable_to_weight_bear"),
+    )
+
+    # --- run the deterministic layer (no LLM) ---
+    red_flag_result = screen_red_flags(red_flag_input)
+    ottawa_result = apply_ottawa_knee_rule(ottawa_input)
+    pittsburgh_result = apply_pittsburgh_knee_rule(pittsburgh_input)
+
+    # --- build a plain-dict assessment to store (dataclasses aren't
+    #     directly JSON/Mongo friendly, so pull out the fields we need) ---
+    assessment = {
+        "red_flag": {
+            "escalate_immediately": red_flag_result.escalate_immediately,
+            "triggered_flags": red_flag_result.triggered_flags,
+            "rationale": red_flag_result.rationale,
+            "action": red_flag_result.action,
+        },
+        "ottawa": {
+            "xray_indicated": ottawa_result.xray_indicated,
+            "triggered_criteria": ottawa_result.triggered_criteria,
+            "rationale": ottawa_result.rationale,
+        },
+        "pittsburgh": {
+            "xray_indicated": pittsburgh_result.xray_indicated,
+            "triggered_criteria": pittsburgh_result.triggered_criteria,
+            "rationale": pittsburgh_result.rationale,
+        },
+        # convenience flag the templates/case list can read quickly
+        "red_flag_positive": red_flag_result.escalate_immediately,
+    }
+
+    store.save_assessment(case_id, assessment)
+
+    # go to the summary tab, where the result (or the halt) is shown
+    return RedirectResponse(f"/cases/{case_id}/summary", status_code=302)

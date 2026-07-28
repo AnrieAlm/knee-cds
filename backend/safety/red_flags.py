@@ -28,6 +28,7 @@ class RedFlagInput:
     significant_trauma: bool = False      # High energy mechanism
     unable_to_weight_bear: bool = False   # Cannot take 4 steps
     bony_tenderness: bool = False         # Direct bony point tenderness
+    compartment_syndrome_signs: bool = False  # Severe disproportionate pain, tense swelling, pain on passive stretch
 
     # Neoplastic
     unexplained_weight_loss: bool = False # >10% body weight, unexplained
@@ -38,6 +39,7 @@ class RedFlagInput:
     foot_drop: bool = False              # Inability to dorsiflex foot
     saddle_anaesthesia: bool = False     # Perineal numbness — cauda equina
 
+    compartment_syndrome_signs: bool = False   # Severe disproportionate pain, tense swelling, pain on passive stretch
 @dataclass
 class RedFlagResult:
     escalate_immediately: bool
@@ -75,7 +77,8 @@ def screen_red_flags(data: RedFlagInput) -> RedFlagResult:
         triggered.append("Unable to weight bear (4 steps)")
     if data.bony_tenderness:
         triggered.append("Bony point tenderness on palpation")
-
+    if data.compartment_syndrome_signs:
+        triggered.append("Compartment syndrome signs (severe disproportionate pain, tense swelling)")
     # Neoplastic
     if data.unexplained_weight_loss:
         triggered.append("Unexplained weight loss")
@@ -83,13 +86,16 @@ def screen_red_flags(data: RedFlagInput) -> RedFlagResult:
         triggered.append("Night pain at rest — waking from sleep")
     if data.history_of_cancer:
         triggered.append("History of cancer with new joint pain")
-
+    
+    
     # Neurological
     if data.foot_drop:
         triggered.append("Foot drop — neurological emergency")
     if data.saddle_anaesthesia:
         triggered.append("Saddle anaesthesia — possible cauda equina syndrome")
 
+    
+    
     escalate = len(triggered) > 0
 
     if escalate:

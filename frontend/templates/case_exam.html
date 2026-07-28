@@ -1,5 +1,176 @@
 {% extends "case_workspace.html" %}
 {% block tab_content %}
-<h2 class="h5">Objective Examination</h2>
-<p class="text-muted">Exam question set and special-test suggestions go here.</p>
+
+<h2 class="h5 mb-3">Objective Examination</h2>
+<p class="text-muted small">
+    Complete the safety screen and fracture-rule findings, then submit.
+    The deterministic safety layer runs on submit — a positive red flag halts the assessment.
+</p>
+
+<form action="/cases/{{ case.id }}/exam" method="post">
+
+    <!-- ============================================================= -->
+    <!-- ALWAYS-VISIBLE SECTION: fracture rules + can't-miss red flags -->
+    <!-- ============================================================= -->
+
+    <div class="card mb-3">
+        <div class="card-header bg-light fw-bold">
+            Patient &amp; mechanism
+        </div>
+        <div class="card-body">
+
+            <!-- age is a number, needed by Ottawa and Pittsburgh -->
+            <div class="mb-3">
+                <label class="form-label">Patient age (years)</label>
+                <input type="number" name="age" class="form-control" min="0" max="120" required>
+            </div>
+
+            <!-- mechanism: blunt trauma or fall (Pittsburgh needs this) -->
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="mechanism_blunt_trauma_or_fall" id="mech">
+                <label class="form-check-label" for="mech">Mechanism: blunt trauma or fall</label>
+            </div>
+
+            <!-- significant trauma is also a red flag on its own -->
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="significant_trauma" id="sigtrauma">
+                <label class="form-check-label" for="sigtrauma">Significant / high-energy trauma</label>
+            </div>
+
+        </div>
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-header bg-light fw-bold">
+            Fracture-rule findings (Ottawa / Pittsburgh)
+        </div>
+        <div class="card-body">
+
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="unable_to_weight_bear" id="wb">
+                <label class="form-check-label" for="wb">Unable to weight-bear 4 steps (at injury and now)</label>
+            </div>
+
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="unable_to_flex_90" id="flex90">
+                <label class="form-check-label" for="flex90">Unable to flex knee to 90&deg;</label>
+            </div>
+
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="isolated_patella_tenderness" id="patella">
+                <label class="form-check-label" for="patella">Isolated patellar tenderness</label>
+            </div>
+
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="fibula_head_tenderness" id="fibula">
+                <label class="form-check-label" for="fibula">Tenderness at head of fibula</label>
+            </div>
+
+        </div>
+    </div>
+
+    <div class="card mb-3 border-danger">
+        <div class="card-header bg-danger text-white fw-bold">
+            &#9888; Can't-miss red flags (screen on every case)
+        </div>
+        <div class="card-body">
+
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="fever_with_joint_pain" id="fever">
+                <label class="form-check-label" for="fever">Fever with acute joint pain</label>
+            </div>
+
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="hot_swollen_joint" id="hotjoint">
+                <label class="form-check-label" for="hotjoint">Hot, swollen, erythematous joint</label>
+            </div>
+
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="pulseless_limb" id="pulseless">
+                <label class="form-check-label" for="pulseless">Pulseless limb / absent distal pulse</label>
+            </div>
+
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="foot_drop" id="footdrop">
+                <label class="form-check-label" for="footdrop">Foot drop (inability to dorsiflex)</label>
+            </div>
+
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="saddle_anaesthesia" id="saddle">
+                <label class="form-check-label" for="saddle">Saddle anaesthesia / perineal numbness</label>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- ============================================================= -->
+    <!-- COLLAPSIBLE SECTION: extended red-flag screen (context-based) -->
+    <!-- ============================================================= -->
+
+    <div class="mb-3">
+        <button class="btn btn-outline-secondary btn-sm" type="button"
+                data-bs-toggle="collapse" data-bs-target="#extendedFlags"
+                aria-expanded="false" aria-controls="extendedFlags">
+            Show extended red-flag screen
+        </button>
+    </div>
+
+    <div class="collapse" id="extendedFlags">
+        <div class="card mb-3">
+            <div class="card-header bg-light fw-bold">
+                Extended red-flag screen (screen when presentation warrants)
+            </div>
+            <div class="card-body">
+
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="recent_infection" id="infection">
+                    <label class="form-check-label" for="infection">Recent systemic infection</label>
+                </div>
+
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="bony_tenderness" id="bony">
+                    <label class="form-check-label" for="bony">Direct bony point tenderness</label>
+                </div>
+
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="unexplained_weight_loss" id="wtloss">
+                    <label class="form-check-label" for="wtloss">Unexplained weight loss (&gt;10% body weight)</label>
+                </div>
+
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="night_pain_at_rest" id="nightpain">
+                    <label class="form-check-label" for="nightpain">Night pain at rest (not positional)</label>
+                </div>
+
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="history_of_cancer" id="cancer">
+                    <label class="form-check-label" for="cancer">History of cancer / prior malignancy</label>
+                </div>
+
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="suspected_dvt" id="dvt">
+                    <label class="form-check-label" for="dvt">
+                        Suspected DVT (calf swelling, redness, warmth)
+                        <span class="text-muted">(rare)</span>
+                    </label>
+                </div>
+
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="compartment_syndrome_signs" id="compartment">
+                    <label class="form-check-label" for="compartment">
+                        <strong>Compartment syndrome signs</strong> — severe disproportionate pain, tense swelling, pain on passive stretch
+                        <span class="text-muted">(rare)</span>
+                    </label>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <div class="d-flex justify-content-end">
+        <button type="submit" class="btn btn-primary">Run Safety Screen &amp; Save</button>
+    </div>
+
+</form>
+
 {% endblock %}
