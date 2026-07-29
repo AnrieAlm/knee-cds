@@ -1,5 +1,105 @@
 {% extends "case_workspace.html" %}
 {% block tab_content %}
-<h2 class="h5">Case Summary</h2>
-<p class="text-muted">Structured summary output goes here.</p>
+
+<h2 class="h5 mb-3">Case Summary</h2>
+
+{% if not case.assessment %}
+    <!-- No exam has been run yet -->
+    <div class="alert alert-secondary">
+        No assessment has been run yet. Complete the
+        <a href="/cases/{{ case.id }}/exam">Exam</a> tab to run the safety screen.
+    </div>
+{% else %}
+
+    <!-- ========================================================= -->
+    <!-- RED-FLAG HALT BANNER (only shows if a red flag fired)      -->
+    <!-- A persistent banner, not a dismissible modal, because a    -->
+    <!-- safety halt must stay visible.                             -->
+    <!-- ========================================================= -->
+    {% if case.assessment.red_flag.escalate_immediately %}
+    <div class="alert alert-danger border-danger" role="alert">
+        <h4 class="alert-heading">
+            &#9888; Red Flag &mdash; Assessment Halted
+            <span class="badge badge-deterministic">Deterministic</span>
+        </h4>
+        <p class="mb-2"><strong>Triggered:</strong></p>
+        <ul class="mb-2">
+            {% for flag in case.assessment.red_flag.triggered_flags %}
+            <li>{{ flag }}</li>
+            {% endfor %}
+        </ul>
+        <hr>
+        <p class="mb-0">{{ case.assessment.red_flag.action }}</p>
+    </div>
+    {% endif %}
+
+    <!-- ========================================================= -->
+    <!-- SYSTEM CHECK: deterministic results (always shown)         -->
+    <!-- ========================================================= -->
+    <div class="card mb-3">
+        <div class="card-header bg-light fw-bold">
+            System Check
+            <span class="badge badge-deterministic">Deterministic</span>
+        </div>
+        <div class="card-body">
+
+            <!-- Red-flag screen result -->
+            <p class="mb-1"><strong>Red-flag screen:</strong>
+                {% if case.assessment.red_flag.escalate_immediately %}
+                    <span class="text-danger">Positive &mdash; escalate</span>
+                {% else %}
+                    <span class="text-success">Negative &mdash; no red flags detected</span>
+                {% endif %}
+            </p>
+
+            <!-- Ottawa result -->
+            <p class="mb-1"><strong>Ottawa Knee Rule:</strong>
+                {% if case.assessment.ottawa.xray_indicated %}
+                    <span class="text-danger">X-ray indicated</span>
+                {% else %}
+                    <span class="text-muted">X-ray not indicated</span>
+                {% endif %}
+            </p>
+            <p class="small text-muted mb-2">{{ case.assessment.ottawa.rationale }}</p>
+
+            <!-- Pittsburgh result -->
+            <p class="mb-1"><strong>Pittsburgh Knee Rule:</strong>
+                {% if case.assessment.pittsburgh.xray_indicated %}
+                    <span class="text-danger">X-ray indicated</span>
+                {% else %}
+                    <span class="text-muted">X-ray not indicated</span>
+                {% endif %}
+            </p>
+            <p class="small text-muted mb-0">{{ case.assessment.pittsburgh.rationale }}</p>
+
+        </div>
+    </div>
+
+    <!-- ========================================================= -->
+    <!-- AGENT SUGGESTIONS: only offered if NO red flag fired       -->
+    <!-- (the slow LLM path — step 5). If a red flag fired, the     -->
+    <!-- agent is never offered: the assessment is halted.          -->
+    <!-- ========================================================= -->
+    {% if not case.assessment.red_flag.escalate_immediately %}
+    <div class="card mb-3">
+        <div class="card-header bg-light fw-bold">
+            Suggested next tests
+            <span class="badge badge-ai-suggested">AI-suggested &mdash; review before use</span>
+        </div>
+        <div class="card-body">
+            <p class="text-muted small mb-2">
+                Safety screen passed. You can request evidence-based special-test
+                suggestions from the reasoning agent.
+            </p>
+            <form action="/cases/{{ case.id }}/suggest" method="post">
+                <button type="submit" class="btn btn-outline-primary btn-sm">
+                    Get test suggestions
+                </button>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+
+{% endif %}
+
 {% endblock %}
