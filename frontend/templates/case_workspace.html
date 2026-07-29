@@ -22,29 +22,10 @@
     </li>
 </ul>
 
-<!-- Dummy trigger for now — will fire from real red-flag logic later -->
-<button type="button" class="btn btn-danger btn-sm mb-3" data-bs-toggle="modal" data-bs-target="#redFlagModal">
-    Trigger Red Flag (test)
-</button>
+
 
 {% block tab_content %}{% endblock %}
 
-<div class="modal fade" id="redFlagModal" tabindex="-1" aria-labelledby="redFlagModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content border-danger">
-            <div class="modal-header bg-danger text-white">
-                <h5 class="modal-title" id="redFlagModalLabel">⚠ Red Flag Identified</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <p class="mb-1"><span class="badge badge-deterministic">Deterministic</span></p>
-                <p>Placeholder red-flag message — this will be populated from <code>red_flags.py</code> based on case findings.</p>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Acknowledge</button>
-            </div>
-        </div>
-    </div>
-</div>
+
 
 {% endblock %}

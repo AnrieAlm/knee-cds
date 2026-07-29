@@ -71,3 +71,8 @@ def test_action_message_on_escalation():
     result = screen_red_flags(RedFlagInput(pulseless_limb=True))
     assert "Do not proceed" in result.action
     assert "emergency" in result.action.lower()
+
+def test_compartment_syndrome_triggers_escalation():
+    result = screen_red_flags(RedFlagInput(compartment_syndrome_signs=True))
+    assert result.escalate_immediately == True
+    assert any("Compartment" in f for f in result.triggered_flags)

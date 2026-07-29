@@ -13,7 +13,7 @@ import starlette.status as status
 from backend.rules.ottawa import apply_ottawa_knee_rule, OttawaInput
 from backend.rules.pittsburgh import apply_pittsburgh_knee_rule, PittsburghInput
 from backend.safety.red_flags import screen_red_flags, RedFlagInput
-
+from backend.agent.orchestrator import run_agent_only, run_assessment
 app = FastAPI(
     title="Knee CDS API",
     description="Agentic clinical decision support for junior physiotherapists",
@@ -227,3 +227,78 @@ async def case_exam_submit(request: Request, case_id: str):
 
     # go to the summary tab, where the result (or the halt) is shown
     return RedirectResponse(f"/cases/{case_id}/summary", status_code=302)
+
+# -----------------------------------------------------------
+# POST /cases/{case_id}/suggest
+# Runs the LLM agent to suggest special tests.
+# This is the SLOW path (the language model runs here).
+# It only runs if the safety screen already passed.
+# -----------------------------------------------------------
+@app.post("/cases/{case_id}/suggest", response_class=RedirectResponse)
+async def case_suggest(request: Request, case_id: str):
+
+    # check the user is logged in
+    id_token = request.cookies.get("token")
+    user_token = validate_firebase_token(id_token)
+    if not user_token:
+        return RedirectResponse("/")
+
+    # load the case
+    case = store.get_case(case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    # get the saved assessment (from when the exam was submitted)
+    assessment = case.get("assessment")
+
+    # SAFETY GUARD:
+    # if there is no assessment yet, or a red flag fired,
+    # do NOT run the agent. Just go back to the summary.
+    if not assessment:
+        return RedirectResponse(
+            f"/cases/{case_id}/summary",
+            status_code=status.HTTP_302_FOUND,
+        )
+    if assessment.get("red_flag_positive"):
+        return RedirectResponse(
+            f"/cases/{case_id}/summary",
+            status_code=status.HTTP_302_FOUND,
+        )
+
+    # build the safety-facts text to hand the agent as settled facts
+    ottawa_text = assessment["ottawa"]["rationale"]
+    pittsburgh_text = assessment["pittsburgh"]["rationale"]
+
+    safety_facts = (
+        "ESTABLISHED FACTS (do not override):\n"
+        "- Ottawa: " + ottawa_text + "\n"
+        "- Pittsburgh: " + pittsburgh_text + "\n"
+        "- Red-flag screen: negative."
+    )
+
+    # a simple fixed question for now
+    query = (
+        "Given an acute knee injury with no red flags, which physical "
+        "special tests should be prioritised, and what does each assess?"
+    )
+
+    # run the agent (this is the slow part - can take 1 to 3 minutes)
+    result = run_agent_only(query, safety_facts)
+
+    # write the retrieval to the append-only audit log
+    log_entry = {
+        "query": query,
+        "retrieved": result["retrieved"],
+        "suggestion": result["suggestion"],
+    }
+    store.append_agent_log(case_id, log_entry)
+
+    # save the suggestion onto the assessment so the summary can show it
+    assessment["agent_suggestion"] = result["suggestion"]
+    store.save_assessment(case_id, assessment)
+
+    # go back to the summary, which will now show the suggestion
+    return RedirectResponse(
+        f"/cases/{case_id}/summary",
+        status_code=status.HTTP_302_FOUND,
+    )

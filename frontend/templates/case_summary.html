@@ -87,15 +87,27 @@
             <span class="badge badge-ai-suggested">AI-suggested &mdash; review before use</span>
         </div>
         <div class="card-body">
-            <p class="text-muted small mb-2">
-                Safety screen passed. You can request evidence-based special-test
-                suggestions from the reasoning agent.
-            </p>
-            <form action="/cases/{{ case.id }}/suggest" method="post">
-                <button type="submit" class="btn btn-outline-primary btn-sm">
-                    Get test suggestions
-                </button>
-            </form>
+
+            {% if case.assessment.agent_suggestion %}
+
+                <!-- the agent has already produced a suggestion, so show it -->
+                <p class="mb-0" style="white-space: pre-wrap;">{{ case.assessment.agent_suggestion }}</p>
+
+            {% else %}
+
+                <!-- no suggestion yet, so show the button to request one -->
+                <p class="text-muted small mb-2">
+                    Safety screen passed. You can request evidence-based special-test
+                    suggestions from the reasoning agent.
+                </p>
+                <form action="/cases/{{ case.id }}/suggest" method="post">
+                    <button type="submit" class="btn btn-outline-primary btn-sm">
+                        Get test suggestions
+                    </button>
+                </form>
+
+            {% endif %}
+
         </div>
     </div>
     {% endif %}

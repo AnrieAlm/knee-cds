@@ -174,7 +174,9 @@ def run_assessment(red_flag_input, ottawa_input, pittsburgh_input, clinician_que
     # reasons about test prioritisation and pulls evidence, but cannot touch
     # the safety conclusions.
 
-    llm = ChatOllama(model=LLM_MODEL, temperature=0)
+    llm = ChatOllama(model=LLM_MODEL, temperature=0,
+        num_predict=350,      # cap output length so it can't ramble for minutes
+        num_ctx=2048,    )
 
     agent = create_agent(
         model=llm,
@@ -237,6 +239,38 @@ def _extract_final_text(response):
 # ===========================================================
 # Quick manual test
 # ===========================================================
+def run_agent_only(query, safety_facts):
+    # thin wrapper so main.py can call the agent without re-running the
+    # deterministic gates (those already ran when the case was created)
+    llm = ChatOllama(
+        model=LLM_MODEL,
+        temperature=0,
+        num_predict=350,
+        num_ctx=2048,
+    )
+
+    agent = create_agent(
+        model=llm,
+        tools=[search_corpus],
+        system_prompt=AGENT_SYSTEM_PROMPT,
+    )
+
+    # inject the pre-computed safety facts plus the clinician question
+    full_prompt = safety_facts + "\n\nCLINICIAN QUESTION: " + query
+
+    response = agent.invoke(
+        {"messages": [{"role": "user", "content": full_prompt}]},
+        config={"recursion_limit": 4},
+    )
+
+    suggestion = _extract_final_text(response)
+
+    # return shape matches what main.py expects: suggestion + retrieved stub
+    # (retrieved is empty here because retrieval happens inside the agent loop)
+    return {
+        "suggestion": suggestion,
+        "retrieved": [],
+    }
 
 if __name__ == "__main__":
 
