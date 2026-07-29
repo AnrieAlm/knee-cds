@@ -57,6 +57,7 @@ LLM_MODEL = "llama3.2:3b"     # was "llama3.1:8b"
 # System prompt for the agent. It is told, explicitly, that the safety
 # results are already decided and are not its job. Its job is test
 # prioritisation and evidence retrieval only.
+
 AGENT_SYSTEM_PROMPT = """You are a clinical reasoning assistant for a junior \
 physiotherapist assessing an acute knee injury.
 
@@ -71,6 +72,13 @@ the search_corpus tool.
 corpus does not support a claim, say so rather than inventing it.
 - You are assisting, not deciding. Frame outputs as suggestions for the \
 clinician to review.
+- SCOPE: This is an ACUTE TRIAGE assessment only. Do NOT suggest \
+return-to-sport tests, hop tests, single-leg performance tests, or \
+high-performance athletic screening. These are only appropriate in later \
+rehabilitation phases, after acute management is established.
+- POPULATION: Adapt all test suggestions to the patient's age and \
+presentation as provided in the established facts. Do not suggest tests \
+that are inappropriate for the patient's age group or clinical phase.
 """
 
 
@@ -80,21 +88,18 @@ clinician to review.
 
 @tool
 def search_corpus(query: str) -> str:
-    """Search the clinical knowledge corpus (Magee knee chapter, special-test
-    notes, JOSPT guidelines) for evidence relevant to the query. Returns the
-    most relevant passages with their sources. Use this to ground every
-    clinical claim."""
+    """Search the clinical knowledge corpus for evidence. Returns top passages.
+    Call this ONCE with your best query. Do not call it multiple times."""
     results = retrieve(query)
     if not results:
-        return "No relevant evidence found in the corpus for that query."
-
-    # Format the retrieved chunks for the LLM, keeping source attribution
-    # so the agent can cite. We pass source + text, not the raw score.
+        return "No relevant evidence found."
     lines = []
     for r in results:
         source = r["metadata"].get("source", "unknown")
-        lines.append(f"[source: {source}]\n{r['text']}")
-    return "\n\n---\n\n".join(lines)
+        # truncate each chunk to 200 chars so the context stays small
+        text = r["text"][:200]
+        lines.append(f"[{source}]: {text}")
+    return "\n---\n".join(lines)
 
 
 # ===========================================================
@@ -175,14 +180,31 @@ def run_assessment(red_flag_input, ottawa_input, pittsburgh_input, clinician_que
     # the safety conclusions.
 
     llm = ChatOllama(model=LLM_MODEL, temperature=0,
-        num_predict=350,      # cap output length so it can't ramble for minutes
-        num_ctx=2048,    )
+        num_predict=200,      # cap output length so it can't ramble for minutes, changed fro ,350 to 200
+        num_ctx=1024,    )
 
     agent = create_agent(
         model=llm,
         tools=[search_corpus],
         system_prompt=AGENT_SYSTEM_PROMPT,
     )
+    
+    # Build a patient context string from what we already know deterministically.
+# The agent needs this so it can scope its suggestions appropriately.
+    patient_context_lines = [
+        "PATIENT CONTEXT (use to scope your suggestions):",
+        f"- Clinical phase: Acute triage",
+        f"- Ottawa age criterion met: {'Yes' if ottawa_input.age_55_or_older else 'No'}",
+    ]
+    # If the Ottawa age criterion fired, make the implication explicit.
+    if ottawa_input.age_55_or_older:
+        patient_context_lines.append(
+            "- Patient is 55 or older: do NOT suggest return-to-sport tests, "
+            "hop tests, or high-performance athletic screening."
+        )
+
+    patient_context = "\n".join(patient_context_lines)
+
 
     # Facts block handed to the agent. These are the deterministic outputs,
     # phrased as settled context the agent must respect.
@@ -191,7 +213,8 @@ def run_assessment(red_flag_input, ottawa_input, pittsburgh_input, clinician_que
         f"- Ottawa Knee Rule: {ottawa_result.rationale}\n"
         f"- Pittsburgh Knee Rule: {pittsburgh_result.rationale}\n"
         "- Red-flag screen: negative (no red flags detected).\n\n"
-        f"CLINICIAN QUESTION: {clinician_query}"
+        + patient_context + "\n\n"
+        + f"CLINICIAN QUESTION: {clinician_query}"
     )
 
     # create_agent returns a runnable that takes a messages list.
@@ -202,12 +225,12 @@ def run_assessment(red_flag_input, ottawa_input, pittsburgh_input, clinician_que
     # Extract the agent's final text. The exact shape of the response may
     # need a small adjustment depending on the langchain 1.3.10 return type;
     # this pulls the content of the last message.
+    # extract the agent's final text
     agent_suggestion = _extract_final_text(response)
 
     # -------------------------------------------------------
     # STEP 4: Assemble the separated result
     # -------------------------------------------------------
-
     return AssessmentResult(
         red_flag_positive=False,
         red_flag_message=red_flag_result.rationale,
@@ -246,8 +269,8 @@ def run_agent_only(query, safety_facts):
         model=LLM_MODEL,
         temperature=0,
         num_predict=350,
-        num_ctx=2048,
-    )
+        num_ctx=1024,
+    ) # changed num_ctx from 2048 to 1024 to reduce context window and prevent potential memory issues
 
     agent = create_agent(
         model=llm,
@@ -261,7 +284,7 @@ def run_agent_only(query, safety_facts):
     response = agent.invoke(
         {"messages": [{"role": "user", "content": full_prompt}]},
         config={"recursion_limit": 4},
-    )
+    ) # recursion_limit=4 is the minimum needed for one tool call + final answer
 
     suggestion = _extract_final_text(response)
 

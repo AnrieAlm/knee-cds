@@ -4,7 +4,7 @@
 <h2 class="h5 mb-3">Case Summary</h2>
 
 {% if not case.assessment %}
-    <!-- No exam has been run yet -->
+    <!-- no exam has been run yet -->
     <div class="alert alert-secondary">
         No assessment has been run yet. Complete the
         <a href="/cases/{{ case.id }}/exam">Exam</a> tab to run the safety screen.
@@ -13,8 +13,8 @@
 
     <!-- ========================================================= -->
     <!-- RED-FLAG HALT BANNER (only shows if a red flag fired)      -->
-    <!-- A persistent banner, not a dismissible modal, because a    -->
-    <!-- safety halt must stay visible.                             -->
+    <!-- a persistent banner, not a dismissible modal, because a    -->
+    <!-- safety halt must stay visible                              -->
     <!-- ========================================================= -->
     {% if case.assessment.red_flag.escalate_immediately %}
     <div class="alert alert-danger border-danger" role="alert">
@@ -43,7 +43,7 @@
         </div>
         <div class="card-body">
 
-            <!-- Red-flag screen result -->
+            <!-- red-flag screen result -->
             <p class="mb-1"><strong>Red-flag screen:</strong>
                 {% if case.assessment.red_flag.escalate_immediately %}
                     <span class="text-danger">Positive &mdash; escalate</span>
@@ -52,7 +52,7 @@
                 {% endif %}
             </p>
 
-            <!-- Ottawa result -->
+            <!-- ottawa result -->
             <p class="mb-1"><strong>Ottawa Knee Rule:</strong>
                 {% if case.assessment.ottawa.xray_indicated %}
                     <span class="text-danger">X-ray indicated</span>
@@ -62,7 +62,7 @@
             </p>
             <p class="small text-muted mb-2">{{ case.assessment.ottawa.rationale }}</p>
 
-            <!-- Pittsburgh result -->
+            <!-- pittsburgh result -->
             <p class="mb-1"><strong>Pittsburgh Knee Rule:</strong>
                 {% if case.assessment.pittsburgh.xray_indicated %}
                     <span class="text-danger">X-ray indicated</span>
@@ -77,8 +77,8 @@
 
     <!-- ========================================================= -->
     <!-- AGENT SUGGESTIONS: only offered if NO red flag fired       -->
-    <!-- (the slow LLM path — step 5). If a red flag fired, the     -->
-    <!-- agent is never offered: the assessment is halted.          -->
+    <!-- the slow LLM path. if a red flag fired the agent is        -->
+    <!-- never offered: the assessment is halted                    -->
     <!-- ========================================================= -->
     {% if not case.assessment.red_flag.escalate_immediately %}
     <div class="card mb-3">
@@ -86,30 +86,121 @@
             Suggested next tests
             <span class="badge badge-ai-suggested">AI-suggested &mdash; review before use</span>
         </div>
-        <div class="card-body">
+        <div class="card-body" id="suggestion-body">
 
             {% if case.assessment.agent_suggestion %}
 
-                <!-- the agent has already produced a suggestion, so show it -->
+                <!-- suggestion already exists, just show it -->
                 <p class="mb-0" style="white-space: pre-wrap;">{{ case.assessment.agent_suggestion }}</p>
+
+            {% elif case.assessment.agent_suggestion_status == 'pending' %}
+
+                <!-- agent is running in background - show spinner and start polling -->
+                <div class="d-flex align-items-center gap-2 text-muted small">
+                    <div class="spinner-border spinner-border-sm" role="status"></div>
+                    <span>Reasoning agent running &mdash; this takes 1&ndash;2 minutes&hellip;</span>
+                </div>
+                <script>
+                    // addition 1 - poll every 5 seconds while agent runs in background
+                    const caseId = '{{ case.id }}';
+                    const pollInterval = setInterval(async function () {
+                        try {
+                            const response = await fetch('/cases/' + caseId + '/suggest-status');
+                            const data = await response.json();
+
+                            if (data.status === 'done' && data.suggestion) {
+                                clearInterval(pollInterval);
+                                // replace spinner with the suggestion text
+                                document.getElementById('suggestion-body').innerHTML =
+                                    '<p class="mb-0" style="white-space: pre-wrap;">'
+                                    + data.suggestion + '</p>';
+                            }
+
+                            if (data.status === 'error') {
+                                clearInterval(pollInterval);
+                                document.getElementById('suggestion-body').innerHTML =
+                                    '<p class="text-danger small mb-0">'
+                                    + 'Agent error &mdash; please try again.</p>';
+                            }
+
+                        } catch (err) {
+                            // network hiccup - keep polling, don't stop
+                            console.log('poll error, will retry:', err);
+                        }
+                    }, 5000);
+                </script>
+
+            {% elif case.assessment.agent_suggestion_status == 'error' %}
+
+                <!-- previous attempt failed -->
+                <p class="text-danger small mb-2">
+                    The reasoning agent encountered an error. You can try again.
+                </p>
+                <button class="btn btn-outline-primary btn-sm" onclick="requestSuggestion()">
+                    Retry
+                </button>
 
             {% else %}
 
-                <!-- no suggestion yet, so show the button to request one -->
+                <!-- no suggestion yet, show the request button -->
                 <p class="text-muted small mb-2">
                     Safety screen passed. You can request evidence-based special-test
                     suggestions from the reasoning agent.
                 </p>
-                <form action="/cases/{{ case.id }}/suggest" method="post">
-                    <button type="submit" class="btn btn-outline-primary btn-sm">
-                        Get test suggestions
-                    </button>
-                </form>
+                <button class="btn btn-outline-primary btn-sm" onclick="requestSuggestion()">
+                    Get test suggestions
+                </button>
 
+                   
+            
             {% endif %}
 
         </div>
+
     </div>
+ {% include "case_chat.html" %}
+    <!-- addition 2 - async suggestion request and polling logic -->
+    <script>
+        async function requestSuggestion() {
+            const caseId = '{{ case.id }}';
+
+            // replace the button with a spinner immediately so the user
+            // knows something is happening
+            document.getElementById('suggestion-body').innerHTML =
+                '<div class="d-flex align-items-center gap-2 text-muted small">'
+                + '<div class="spinner-border spinner-border-sm" role="status"></div>'
+                + '<span>Reasoning agent running &mdash; this takes 1&ndash;2 minutes&hellip;</span>'
+                + '</div>';
+
+            // kick off the background agent call - returns immediately
+            await fetch('/cases/' + caseId + '/suggest-async', { method: 'POST' });
+
+            // start polling every 5 seconds for the result
+            const pollInterval = setInterval(async function () {
+                try {
+                    const response = await fetch('/cases/' + caseId + '/suggest-status');
+                    const data = await response.json();
+
+                    if (data.status === 'done' && data.suggestion) {
+                        clearInterval(pollInterval);
+                        document.getElementById('suggestion-body').innerHTML =
+                            '<p class="mb-0" style="white-space: pre-wrap;">'
+                            + data.suggestion + '</p>';
+                    }
+
+                    if (data.status === 'error') {
+                        clearInterval(pollInterval);
+                        document.getElementById('suggestion-body').innerHTML =
+                            '<p class="text-danger small mb-0">'
+                            + 'Agent error &mdash; please try again.</p>';
+                    }
+
+                } catch (err) {
+                    console.log('poll error, will retry:', err);
+                }
+            }, 5000);
+        }
+    </script>
     {% endif %}
 
 {% endif %}

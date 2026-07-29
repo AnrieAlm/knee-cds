@@ -1,0 +1,96 @@
+<!-- case_chat.html — clinical assistant chat panel -->
+<!-- included into case_summary.html below the suggestion card -->
+
+<div class="card mt-4 mb-3" id="chat-panel">
+    <div class="card-header bg-primary text-white fw-semibold py-2 px-3">
+        <i class="bi bi-chat-dots-fill me-1"></i> Ask the Clinical Assistant
+    </div>
+    <div class="card-body p-0">
+
+        <div id="chat-messages"
+            style="height:280px; overflow-y:auto; padding:12px; display:flex; flex-direction:column; gap:10px;">
+            <div class="text-muted small text-center mt-4" id="chat-empty-hint">
+                Ask about a test, a condition, or this patient's presentation.<br>
+                <span style="font-size:0.75rem">e.g. "How do I perform the Lachman test?" or "What does immediate swelling suggest?"</span>
+            </div>
+        </div>
+
+        <div class="border-top p-2 d-flex gap-2">
+            <input type="text" id="chat-input" class="form-control form-control-sm"
+                placeholder="Ask a clinical question..."
+                onkeydown="if(event.key==='Enter'){sendChat();}">
+            <button class="btn btn-primary btn-sm px-3" onclick="sendChat()" id="chat-send-btn">
+                Send
+            </button>
+        </div>
+
+    </div>
+</div>
+
+<script>
+    function sendChat() {
+        var input = document.getElementById('chat-input');
+        var message = input.value.trim();
+        if (!message) return;
+
+        input.value = '';
+        document.getElementById('chat-send-btn').disabled = true;
+        document.getElementById('chat-send-btn').textContent = '...';
+
+        var hint = document.getElementById('chat-empty-hint');
+        if (hint) hint.style.display = 'none';
+
+        appendMessage('you', message);
+
+        var formData = new FormData();
+        formData.append('message', message);
+
+        fetch('/cases/{{ case.id }}/chat', {
+            method: 'POST',
+            body: formData,
+        })
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+            if (data.error) {
+                appendMessage('assistant', 'Error: ' + data.error);
+            } else {
+                appendMessage('assistant', data.response);
+            }
+        })
+        .catch(function(err) {
+            appendMessage('assistant', 'Something went wrong. Please try again.');
+            console.error(err);
+        })
+        .finally(function() {
+            document.getElementById('chat-send-btn').disabled = false;
+            document.getElementById('chat-send-btn').textContent = 'Send';
+        });
+    }
+
+    function appendMessage(role, text) {
+        var container = document.getElementById('chat-messages');
+
+        var bubble = document.createElement('div');
+        bubble.style.maxWidth = '85%';
+        bubble.style.padding = '8px 12px';
+        bubble.style.borderRadius = '12px';
+        bubble.style.fontSize = '0.85rem';
+        bubble.style.lineHeight = '1.45';
+        bubble.style.whiteSpace = 'pre-wrap';
+
+        if (role === 'you') {
+            bubble.style.alignSelf = 'flex-end';
+            bubble.style.backgroundColor = '#0d6efd';
+            bubble.style.color = 'white';
+        } else {
+            bubble.style.alignSelf = 'flex-start';
+            bubble.style.backgroundColor = '#f0f4ff';
+            bubble.style.color = '#212529';
+            bubble.style.border = '1px solid #d0d9ff';
+        }
+
+        bubble.textContent = text;
+        container.appendChild(bubble);
+        container.scrollTop = container.scrollHeight;
+    }
+</script>

@@ -1,5 +1,306 @@
 {% extends "case_workspace.html" %}
 {% block tab_content %}
-<h2 class="h5">Subjective History</h2>
-<p class="text-muted">History question set goes here.</p>
+
+<h2 class="h5 mb-1">Subjective History</h2>
+<p class="text-muted small mb-3">Complete all sections before proceeding to physical examination.</p>
+
+{% if case.history %}
+<!-- read-only summary card when history is already saved -->
+<div class="alert alert-success d-flex align-items-start gap-2 py-2 mb-3" role="alert">
+    <i class="bi bi-check-circle-fill mt-1 flex-shrink-0"></i>
+    <div>
+        <strong>History recorded.</strong>
+        {{ case.history.mechanism_type | capitalize }} injury — {{ case.history.pain_location or 'pain location not recorded' }}.
+        Swelling: {{ case.history.swelling_present }}.
+        Weight-bearing: {{ case.history.weight_bearing }}.
+        <span class="text-muted">Re-submit below to update.</span>
+    </div>
+</div>
+{% endif %}
+
+<form action="/cases/{{ case.id }}/history" method="post">
+
+    <!-- ── SECTION 1: PRESENTING COMPLAINT ─────────────────── -->
+    <div class="card mb-3">
+        <div class="card-header bg-primary text-white fw-semibold py-2 px-3">
+            <i class="bi bi-person-lines-fill me-1"></i> Presenting Complaint
+        </div>
+        <div class="card-body pb-2">
+
+            <!-- involved side -->
+            <div class="mb-3">
+                <label class="form-label fw-semibold mb-1">Involved knee</label>
+                <div class="d-flex gap-3">
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="involved_side" value="right" id="side_right"
+                            {% if case.history and case.history.involved_side == 'right' %}checked{% endif %}>
+                        <label class="form-check-label" for="side_right">Right</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="involved_side" value="left" id="side_left"
+                            {% if case.history and case.history.involved_side == 'left' %}checked{% endif %}>
+                        <label class="form-check-label" for="side_left">Left</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="involved_side" value="bilateral" id="side_bilateral"
+                            {% if case.history and case.history.involved_side == 'bilateral' %}checked{% endif %}>
+                        <label class="form-check-label" for="side_bilateral">Bilateral</label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- chief complaint free text -->
+            <div class="mb-3">
+                <label class="form-label fw-semibold mb-1">Chief complaint</label>
+                <textarea name="chief_complaint" class="form-control form-control-sm" rows="2"
+                    placeholder="Patient's own words — what brought them in today?">{{ case.history.chief_complaint if case.history else '' }}</textarea>
+            </div>
+
+            <!-- activity at time of injury — IKDC categories -->
+            <div class="mb-2">
+                <label class="form-label fw-semibold mb-1">Activity at time of injury</label>
+                <div class="d-flex flex-wrap gap-3">
+                    {% for opt in [('sport', 'Sport / Recreation'), ('work', 'Work'), ('adl', 'ADL'), ('traffic', 'Traffic'), ('other', 'Other / Unknown')] %}
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="activity_at_injury" value="{{ opt[0] }}" id="act_{{ opt[0] }}"
+                            {% if case.history and case.history.activity_at_injury == opt[0] %}checked{% endif %}>
+                        <label class="form-check-label" for="act_{{ opt[0] }}">{{ opt[1] }}</label>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- ── SECTION 2: MECHANISM OF INJURY ──────────────────── -->
+    <div class="card mb-3">
+        <div class="card-header bg-primary text-white fw-semibold py-2 px-3">
+            <i class="bi bi-lightning-fill me-1"></i> Mechanism of Injury
+        </div>
+        <div class="card-body pb-2">
+
+            <!-- onset type — IKDC taxonomy -->
+            <div class="mb-3">
+                <label class="form-label fw-semibold mb-1">Onset type</label>
+                <div class="row g-2">
+                    {% set onset_opts = [
+                        ('traumatic_contact', 'Traumatic — contact', 'Direct blow, tackle, collision'),
+                        ('traumatic_noncontact', 'Traumatic — non-contact', 'Landing, pivoting, cutting without contact'),
+                        ('nontraumatic_sudden', 'Non-traumatic — sudden', 'Unexpected onset without trauma'),
+                        ('nontraumatic_gradual', 'Non-traumatic — gradual', 'Overuse, insidious onset')
+                    ] %}
+                    {% for val, label, hint in onset_opts %}
+                    <div class="col-12 col-sm-6">
+                        <div class="form-check border rounded p-2 h-100
+                            {% if case.history and case.history.mechanism_type == val %}border-primary bg-primary bg-opacity-10{% endif %}">
+                            <input class="form-check-input" type="radio" name="mechanism_type" value="{{ val }}" id="mech_{{ val }}"
+                                {% if case.history and case.history.mechanism_type == val %}checked{% endif %}>
+                            <label class="form-check-label d-block" for="mech_{{ val }}">
+                                <span class="fw-semibold small">{{ label }}</span>
+                                <span class="d-block text-muted" style="font-size:0.75rem">{{ hint }}</span>
+                            </label>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- description -->
+            <div class="mb-3">
+                <label class="form-label fw-semibold mb-1">Description of mechanism</label>
+                <textarea name="mechanism_description" class="form-control form-control-sm" rows="2"
+                    placeholder="What happened? E.g. 'landed awkwardly from a jump, knee buckled inward'">{{ case.history.mechanism_description if case.history else '' }}</textarea>
+            </div>
+
+            <!-- audible pop -->
+            <div class="mb-2">
+                <label class="form-label fw-semibold mb-1">Audible / felt pop at time of injury?</label>
+                <div class="d-flex gap-3">
+                    {% for opt in [('yes','Yes'), ('no','No'), ('unsure','Unsure')] %}
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="audible_pop" value="{{ opt[0] }}" id="pop_{{ opt[0] }}"
+                            {% if case.history and case.history.audible_pop == opt[0] %}checked{% endif %}>
+                        <label class="form-check-label" for="pop_{{ opt[0] }}">{{ opt[1] }}</label>
+                    </div>
+                    {% endfor %}
+                </div>
+                <div class="form-text">Sudden pop with immediate haemarthrosis is a classic ACL presentation (Magee, 2014).</div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- ── SECTION 3: SYMPTOM PROFILE ──────────────────────── -->
+    <div class="card mb-3">
+        <div class="card-header bg-primary text-white fw-semibold py-2 px-3">
+            <i class="bi bi-activity me-1"></i> Symptom Profile
+        </div>
+        <div class="card-body pb-2">
+
+            <!-- pain location -->
+            <div class="mb-3">
+                <label class="form-label fw-semibold mb-1">Pain location</label>
+                <input type="text" name="pain_location" class="form-control form-control-sm"
+                    placeholder="E.g. medial joint line, anterior knee, diffuse"
+                    value="{{ case.history.pain_location if case.history else '' }}">
+            </div>
+
+            <!-- swelling -->
+            <div class="mb-3">
+                <label class="form-label fw-semibold mb-1">Swelling present?</label>
+                <select name="swelling_present" class="form-select form-select-sm mb-1"
+                    onchange="toggleSwellingOnset(this.value)">
+                    <option value="no" {% if case.history and case.history.swelling_present == 'no' %}selected{% endif %}>No</option>
+                    <option value="yes" {% if case.history and case.history.swelling_present == 'yes' %}selected{% endif %}>Yes</option>
+                </select>
+            </div>
+
+            <div id="swelling-onset-row" class="mb-3 ms-3 border-start ps-3"
+                {% if not case.history or case.history.swelling_present != 'yes' %}style="display:none"{% endif %}>
+                <label class="form-label fw-semibold mb-1 small">Swelling onset</label>
+                <div class="d-flex flex-column gap-1">
+                    {% set onset_data = [
+                        ('immediate', 'Immediate (0–2 h)', 'Haemarthrosis — suspect ACL tear, osteochondral fracture, peripheral meniscal tear'),
+                        ('delayed', 'Delayed (6–24 h)', 'Synovial effusion — consider meniscal or capsular involvement'),
+                        ('gradual', 'Gradual (days)', 'Chronic effusion pattern')
+                    ] %}
+                    {% for val, label, hint in onset_data %}
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="swelling_onset" value="{{ val }}" id="sw_{{ val }}"
+                            {% if case.history and case.history.swelling_onset == val %}checked{% endif %}>
+                        <label class="form-check-label small" for="sw_{{ val }}">
+                            <span class="fw-semibold">{{ label }}</span>
+                            <span class="text-muted d-block" style="font-size:0.72rem">{{ hint }}</span>
+                        </label>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- mechanical symptoms row -->
+            <div class="mb-3">
+                <label class="form-label fw-semibold mb-1">Mechanical symptoms</label>
+                <div class="form-text mb-2">Select all that apply.</div>
+                <div class="row g-2">
+                    {% set mech_syms = [
+                        ('locking', 'Locking', 'True locking — block to full extension'),
+                        ('giving_way', 'Giving way', 'Instability, buckles under load'),
+                        ('catching', 'Catching', 'Brief snag sensation in movement'),
+                        ('clicking', 'Clicking / popping', 'Audible or felt during movement'),
+                        ('grinding', 'Grinding / crepitus', 'Coarse sensation, may indicate chondral involvement')
+                    ] %}
+                    {% for val, label, hint in mech_syms %}
+                    <div class="col-12 col-sm-6">
+                        <div class="form-check border rounded p-2">
+                            <input class="form-check-input" type="checkbox" name="mech_sym_{{ val }}" value="yes" id="ms_{{ val }}"
+                                {% if case.history and case.history['mech_sym_' ~ val] == 'yes' %}checked{% endif %}>
+                            <label class="form-check-label small d-block" for="ms_{{ val }}">
+                                <span class="fw-semibold">{{ label }}</span>
+                                <span class="d-block text-muted" style="font-size:0.72rem">{{ hint }}</span>
+                            </label>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- weight bearing -->
+            <div class="mb-2">
+                <label class="form-label fw-semibold mb-1">Weight-bearing status (at presentation)</label>
+                <select name="weight_bearing" class="form-select form-select-sm">
+                    <option value="full" {% if case.history and case.history.weight_bearing == 'full' %}selected{% endif %}>Full weight-bearing</option>
+                    <option value="partial" {% if case.history and case.history.weight_bearing == 'partial' %}selected{% endif %}>Partial weight-bearing</option>
+                    <option value="none" {% if case.history and case.history.weight_bearing == 'none' %}selected{% endif %}>Non-weight-bearing</option>
+                </select>
+                <div class="form-text">Non-weight-bearing status is an Ottawa Knee Rule criterion for imaging referral.</div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- ── SECTION 4: PATIENT CONTEXT ──────────────────────── -->
+    <div class="card mb-3">
+        <div class="card-header bg-primary text-white fw-semibold py-2 px-3">
+            <i class="bi bi-person-badge me-1"></i> Patient Context
+        </div>
+        <div class="card-body pb-2">
+
+            <div class="row g-3">
+
+                <div class="col-12 col-sm-6">
+                    <label class="form-label fw-semibold mb-1">Occupation</label>
+                    <input type="text" name="occupation" class="form-control form-control-sm"
+                        placeholder="E.g. construction worker, office staff, student"
+                        value="{{ case.history.occupation if case.history else '' }}">
+                </div>
+
+                <div class="col-12 col-sm-6">
+                    <label class="form-label fw-semibold mb-1">Activity level</label>
+                    <select name="activity_level" class="form-select form-select-sm">
+                        <option value="sedentary" {% if case.history and case.history.activity_level == 'sedentary' %}selected{% endif %}>Sedentary</option>
+                        <option value="recreational" {% if case.history and case.history.activity_level == 'recreational' %}selected{% endif %}>Recreational sport</option>
+                        <option value="competitive" {% if case.history and case.history.activity_level == 'competitive' %}selected{% endif %}>Competitive athlete</option>
+                    </select>
+                </div>
+
+                <div class="col-12 col-sm-6">
+                    <label class="form-label fw-semibold mb-1">Previous knee injury (same side)?</label>
+                    <select name="previous_knee_injury" class="form-select form-select-sm">
+                        <option value="no" {% if case.history and case.history.previous_knee_injury == 'no' %}selected{% endif %}>No</option>
+                        <option value="yes" {% if case.history and case.history.previous_knee_injury == 'yes' %}selected{% endif %}>Yes</option>
+                    </select>
+                </div>
+
+                <div class="col-12 col-sm-6">
+                    <label class="form-label fw-semibold mb-1">Previous knee surgery?</label>
+                    <select name="previous_surgery" class="form-select form-select-sm"
+                        onchange="toggleSurgeryDetail(this.value)">
+                        <option value="no" {% if case.history and case.history.previous_surgery == 'no' %}selected{% endif %}>No</option>
+                        <option value="yes" {% if case.history and case.history.previous_surgery == 'yes' %}selected{% endif %}>Yes</option>
+                    </select>
+                </div>
+
+                <div class="col-12" id="surgery-detail-row"
+                    {% if not case.history or case.history.previous_surgery != 'yes' %}style="display:none"{% endif %}>
+                    <label class="form-label fw-semibold mb-1 small">Surgery type (if known)</label>
+                    <input type="text" name="surgery_detail" class="form-control form-control-sm"
+                        placeholder="E.g. ACL reconstruction, meniscectomy"
+                        value="{{ case.history.surgery_detail if case.history else '' }}">
+                </div>
+
+                <div class="col-12">
+                    <label class="form-label fw-semibold mb-1">Patient goal</label>
+                    <select name="patient_goal" class="form-select form-select-sm">
+                        <option value="pain_relief" {% if case.history and case.history.patient_goal == 'pain_relief' %}selected{% endif %}>Pain relief</option>
+                        <option value="daily_function" {% if case.history and case.history.patient_goal == 'daily_function' %}selected{% endif %}>Return to daily function</option>
+                        <option value="return_to_work" {% if case.history and case.history.patient_goal == 'return_to_work' %}selected{% endif %}>Return to work</option>
+                        <option value="return_to_sport" {% if case.history and case.history.patient_goal == 'return_to_sport' %}selected{% endif %}>Return to sport</option>
+                    </select>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- submit -->
+    <div class="d-grid mb-4">
+        <button type="submit" class="btn btn-primary">
+            <i class="bi bi-check2-circle me-1"></i>
+            {% if case.history %}Update history &amp; continue to exam{% else %}Save history &amp; continue to exam{% endif %}
+        </button>
+    </div>
+
+</form>
+
+<script>
+    function toggleSwellingOnset(value) {
+        document.getElementById('swelling-onset-row').style.display = (value === 'yes') ? 'block' : 'none';
+    }
+
+    function toggleSurgeryDetail(value) {
+        document.getElementById('surgery-detail-row').style.display = (value === 'yes') ? 'block' : 'none';
+    }
+</script>
+
 {% endblock %}

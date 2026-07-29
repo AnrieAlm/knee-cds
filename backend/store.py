@@ -124,3 +124,13 @@ def save_assessment(case_id: str, assessment: dict):
         {"$set": {"assessment": assessment}},
     )
     return assessment
+
+
+def save_history(case_id: str, history: dict):
+    # save the history form data onto the case document
+    # same pattern as save_assessment — overwrites on re-submission
+    _collection.find_one_and_update(
+        {'id': case_id},
+        {'$set': {'history': history}},
+    )
+    return history
