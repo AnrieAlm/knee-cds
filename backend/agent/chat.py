@@ -1,18 +1,25 @@
 # backend/agent/chat.py
 # Lightweight RAG chat handler for the Cygnus clinical assistant.
 # Unlike the ReAct orchestrator, this does a single retrieval pass
-# and a single LLM call — no agent loop. Fast enough for synchronous
+# and a single LLM call - no agent loop. Fast enough for synchronous
 # use in the chat panel on the Exam tab.
 
 from backend.rag.retriever import retrieve
-from langchain_ollama import OllamaLLM
+from langchain_groq import ChatGroq
+import os
+from dotenv import load_dotenv
 
-# same model as the agent — keeps hardware requirements identical
-_llm = OllamaLLM(
-    model='llama3.2:3b',
-    num_predict=350,
-    num_ctx=2048,
-    temperature=0.2,
+load_dotenv()
+
+# same model as orchestrator.py - keep this in sync if you change it there
+LLM_MODEL = 'llama-3.3-70b-versatile'
+
+# build the LLM once at module load - reused for every chat call
+_llm = ChatGroq(
+    model=LLM_MODEL,
+    temperature=0,
+    max_tokens=500,
+    api_key=os.getenv('GROQ_API_KEY'),
 )
 
 
@@ -32,7 +39,7 @@ def run_chat(message: str, case: dict) -> str:
         case_context = (
             f"Current case: {history.get('activity_level', 'unknown')} patient, "
             f"{history.get('involved_side', 'unknown')} knee. "
-            f"Mechanism: {history.get('mechanism_type', 'unknown')} — "
+            f"Mechanism: {history.get('mechanism_type', 'unknown')} - "
             f"{history.get('mechanism_description', 'no description')}. "
             f"Pain location: {history.get('pain_location', 'not recorded')}. "
             f"Swelling: {history.get('swelling_present', 'unknown')} "
@@ -55,4 +62,6 @@ def run_chat(message: str, case: dict) -> str:
     )
 
     response = _llm.invoke(prompt)
-    return response.strip()
+
+    # .content pulls the text out of the LangChain message object
+    return response.content.strip()

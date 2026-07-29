@@ -31,6 +31,7 @@
 # talk itself out of a red flag. That is the core safety claim of Cygnus.
 
 from dataclasses import dataclass, field
+import os
 
 # --- Deterministic layer imports (no LLM) ---
 from backend.rules.ottawa import apply_ottawa_knee_rule, OttawaInput
@@ -52,7 +53,8 @@ from langchain_ollama import ChatOllama
 # Settings
 # ===========================================================
 
-LLM_MODEL = "llama3.2:3b"     # was "llama3.1:8b"
+
+LLM_MODEL = "llama-3.3-70b-versatile"   # groq hosted - much bigger model LLM_MODEL = "llama3.2:3b"     # was "llama3.1:8b"
 
 # System prompt for the agent. It is told, explicitly, that the safety
 # results are already decided and are not its job. Its job is test
@@ -179,9 +181,12 @@ def run_assessment(red_flag_input, ottawa_input, pittsburgh_input, clinician_que
     # reasons about test prioritisation and pulls evidence, but cannot touch
     # the safety conclusions.
 
-    llm = ChatOllama(model=LLM_MODEL, temperature=0,
-        num_predict=200,      # cap output length so it can't ramble for minutes, changed fro ,350 to 200
-        num_ctx=1024,    )
+    llm = ChatGroq(
+    model=LLM_MODEL,
+    temperature=0,
+    max_tokens=500,         # replaces num_predict
+    api_key=os.getenv('GROQ_API_KEY'),
+)
 
     agent = create_agent(
         model=llm,
@@ -265,12 +270,13 @@ def _extract_final_text(response):
 def run_agent_only(query, safety_facts):
     # thin wrapper so main.py can call the agent without re-running the
     # deterministic gates (those already ran when the case was created)
-    llm = ChatOllama(
+    llm = ChatGroq(
         model=LLM_MODEL,
         temperature=0,
-        num_predict=350,
-        num_ctx=1024,
-    ) # changed num_ctx from 2048 to 1024 to reduce context window and prevent potential memory issues
+        max_tokens=500,
+        api_key=os.getenv('GROQ_API_KEY'),
+    ) 
+    # changed num_ctx from 2048 to 1024 to reduce context window and prevent potential memory issues
 
     agent = create_agent(
         model=llm,
