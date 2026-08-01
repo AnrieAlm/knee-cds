@@ -37,7 +37,8 @@ import os
 from backend.rules.ottawa import apply_ottawa_knee_rule, OttawaInput
 from backend.rules.pittsburgh import apply_pittsburgh_knee_rule, PittsburghInput
 from backend.safety.red_flags import screen_red_flags, RedFlagInput
-
+# addition 1
+from backend.agent.physical_context import formatPhysicalForAgent
 # --- Retrieval (used by the agent as a tool) ---
 from backend.rag.retriever import retrieve
 
@@ -46,7 +47,7 @@ from backend.rag.retriever import retrieve
 # the older create_react_agent / initialize_agent seen in most tutorials.
 from langchain.agents import create_agent
 from langchain.tools import tool
-from langchain_ollama import ChatOllama
+from langchain_groq import ChatGroq
 
 
 # ===========================================================
@@ -81,6 +82,15 @@ rehabilitation phases, after acute management is established.
 - POPULATION: Adapt all test suggestions to the patient's age and \
 presentation as provided in the established facts. Do not suggest tests \
 that are inappropriate for the patient's age group or clinical phase.
+
+RETRIEVAL INSTRUCTIONS:
+- Use search_corpus with specific test names, one at a time if needed. \
+For example: 'Lachman test ACL', 'McMurray test meniscus', \
+'anterior drawer test', 'valgus stress test collateral ligament'.
+- After retrieving, you MUST cite the source tag shown in brackets \
+e.g. [magee_ch12] or [jospt_acl_cpg] next to each claim you make.
+- If a test is not found in the corpus, say so explicitly. Do NOT \
+invent descriptions from general knowledge.
 """
 
 
