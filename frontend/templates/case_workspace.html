@@ -14,9 +14,17 @@
     <li class="nav-item">
         <a class="nav-link {% if active_tab == 'history' %}active{% endif %}" href="/cases/{{ case.id }}/history">History</a>
     </li>
+
+    <a href="/cases/{{ case.id }}/physical"
+   class="nav-link {% if active_tab == 'physical' %}active{% endif %}">
+    Physical
+</a>
+
+
     <li class="nav-item">
         <a class="nav-link {% if active_tab == 'exam' %}active{% endif %}" href="/cases/{{ case.id }}/exam">Exam</a>
     </li>
+    
     <li class="nav-item">
         <a class="nav-link {% if active_tab == 'summary' %}active{% endif %}" href="/cases/{{ case.id }}/summary">Summary</a>
     </li>

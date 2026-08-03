@@ -43,7 +43,6 @@ def load_vector_store():
     Connects to the existing ChromaDB collection on disk.
     Returns a Chroma object we can search against.
     """
-
     # Set up the embedding function. This is what turns
     # the user's query text into a vector at search time.
     embeddings = OllamaEmbeddings(model=EMBEDDING_MODEL)

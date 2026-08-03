@@ -134,3 +134,12 @@ def save_history(case_id: str, history: dict):
         {'$set': {'history': history}},
     )
     return history
+
+def save_physical(case_id: str, physical: dict):
+    # save physical examination data onto the case document
+    # same pattern as save_history — overwrites on re-submission
+    _collection.find_one_and_update(
+        {'id': case_id},
+        {'$set': {'physical': physical}},
+    )
+    return physical

@@ -1,0 +1,633 @@
+{% extends "case_workspace.html" %}
+{% block tab_content %}
+
+<h2 class="h5 mb-1">Physical Examination</h2>
+<p class="text-muted small mb-3">Record findings in sequence. Neurological screen unlocks automatically if indicated.</p>
+
+{% if case.physical %}
+<div class="alert alert-success d-flex align-items-start gap-2 py-2 mb-3" role="alert">
+    <i class="bi bi-check-circle-fill mt-1 flex-shrink-0"></i>
+    <div>
+        <strong>Physical examination recorded.</strong>
+        Gait: {{ case.physical.gait or 'not recorded' }}.
+        Effusion: {{ case.physical.effusion or 'not recorded' }}.
+        {% if case.physical.neuro_triggered == 'yes' %}
+        <span class="text-warning fw-semibold">Neuro screen triggered — {{ case.physical.neuro_trigger_reason }}.</span>
+        {% endif %}
+        <span class="text-muted">Re-submit below to update.</span>
+    </div>
+</div>
+{% endif %}
+
+<form action="/cases/{{ case.id }}/physical" method="post">
+
+    <!-- ── SECTION 1: OBSERVATION ───────────────────────────── -->
+    <div class="card mb-3">
+        <div class="card-header bg-primary text-white fw-semibold py-2 px-3">
+            <i class="bi bi-eye-fill me-1"></i> Observation
+        </div>
+        <div class="card-body pb-2">
+
+            <div class="mb-3">
+                <label class="form-label fw-semibold mb-1">Gait pattern</label>
+                <div class="d-flex flex-wrap gap-3">
+                    {% for val, label in [('normal','Normal'), ('antalgic','Antalgic'), ('assistive_device','Assistive device')] %}
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="gait" value="{{ val }}" id="gait_{{ val }}"
+                            {% if case.physical and case.physical.gait == val %}checked{% endif %}>
+                        <label class="form-check-label" for="gait_{{ val }}">{{ label }}</label>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div class="row g-3 mb-3">
+                <div class="col-12 col-sm-6">
+                    <label class="form-label fw-semibold mb-1">Visible swelling</label>
+                    <select name="visible_swelling" class="form-select form-select-sm">
+                        {% for val, label in [('none','None'), ('mild','Mild'), ('moderate','Moderate'), ('severe','Severe')] %}
+                        <option value="{{ val }}" {% if case.physical and case.physical.visible_swelling == val %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-12 col-sm-6">
+                    <label class="form-label fw-semibold mb-1">Temperature</label>
+                    <select name="temperature" class="form-select form-select-sm">
+                        {% for val, label in [('normal','Normal'), ('warm','Warm'), ('hot','Hot')] %}
+                        <option value="{{ val }}" {% if case.physical and case.physical.temperature == val %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <div class="row g-3 mb-3">
+                <div class="col-6 col-sm-3">
+                    <label class="form-label fw-semibold mb-1 small">Bruising</label>
+                    <select name="bruising" class="form-select form-select-sm">
+                        <option value="no" {% if case.physical and case.physical.bruising == 'no' %}selected{% endif %}>No</option>
+                        <option value="yes" {% if case.physical and case.physical.bruising == 'yes' %}selected{% endif %}>Yes</option>
+                    </select>
+                </div>
+                <div class="col-6 col-sm-3">
+                    <label class="form-label fw-semibold mb-1 small">Muscle wasting</label>
+                    <select name="muscle_wasting" class="form-select form-select-sm">
+                        <option value="no" {% if case.physical and case.physical.muscle_wasting == 'no' %}selected{% endif %}>No</option>
+                        <option value="yes" {% if case.physical and case.physical.muscle_wasting == 'yes' %}selected{% endif %}>Yes</option>
+                    </select>
+                </div>
+                <div class="col-6 col-sm-3">
+                    <label class="form-label fw-semibold mb-1 small">Altered sensation</label>
+                    <select name="altered_sensation_reported" class="form-select form-select-sm"
+                        onchange="checkNeuroTrigger()">
+                        <option value="no" {% if case.physical and case.physical.altered_sensation_reported == 'no' %}selected{% endif %}>No</option>
+                        <option value="yes" {% if case.physical and case.physical.altered_sensation_reported == 'yes' %}selected{% endif %}>Yes</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="mb-2">
+                <label class="form-label fw-semibold mb-1">Alignment / posture notes</label>
+                <textarea name="alignment_notes" class="form-control form-control-sm" rows="2"
+                    placeholder="E.g. valgus alignment, patella alta, leg length discrepancy">{{ case.physical.alignment_notes if case.physical else '' }}</textarea>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- ── SECTION 2: PALPATION ─────────────────────────────── -->
+    <div class="card mb-3">
+        <div class="card-header bg-primary text-white fw-semibold py-2 px-3">
+            <i class="bi bi-hand-index-fill me-1"></i> Palpation
+        </div>
+        <div class="card-body pb-2">
+
+            <div class="row g-3 mb-3">
+                <div class="col-12 col-sm-6">
+                    <label class="form-label fw-semibold mb-1">Effusion</label>
+                    <select name="effusion" class="form-select form-select-sm">
+                        {% for val, label in [('none','None'), ('mild','Mild'), ('moderate','Moderate'), ('severe','Severe')] %}
+                        <option value="{{ val }}" {% if case.physical and case.physical.effusion == val %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-12 col-sm-6">
+                    <label class="form-label fw-semibold mb-1">Effusion type</label>
+                    <select name="effusion_type" class="form-select form-select-sm">
+                        {% for val, label in [('unknown','Unknown'), ('capsular','Capsular'), ('extracapsular','Extracapsular')] %}
+                        <option value="{{ val }}" {% if case.physical and case.physical.effusion_type == val %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <div class="row g-3 mb-2">
+                <div class="col-12 col-sm-6">
+                    <label class="form-label fw-semibold mb-1">Joint line tenderness</label>
+                    <select name="joint_line_tenderness" class="form-select form-select-sm">
+                        {% for val, label in [('none','None'), ('medial','Medial'), ('lateral','Lateral'), ('both','Both')] %}
+                        <option value="{{ val }}" {% if case.physical and case.physical.joint_line_tenderness == val %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                    <div class="form-text">Medial/lateral joint line — meniscal or articular pathology indicator.</div>
+                </div>
+                <div class="col-12 col-sm-6">
+                    <label class="form-label fw-semibold mb-1">Popliteal tenderness</label>
+                    <select name="popliteal_tenderness" class="form-select form-select-sm">
+                        <option value="no" {% if case.physical and case.physical.popliteal_tenderness == 'no' %}selected{% endif %}>No</option>
+                        <option value="yes" {% if case.physical and case.physical.popliteal_tenderness == 'yes' %}selected{% endif %}>Yes</option>
+                    </select>
+                    <div class="form-text">Baker's cyst, PCL, posterior horn involvement.</div>
+                </div>
+            </div>
+<!-- addition 3 — bony palpation points -->
+            <div class="row g-3 mb-2">
+                <div class="col-6 col-sm-3">
+                    <label class="form-label fw-semibold mb-1 small">Patellar tenderness</label>
+                    <select name="patellar_tenderness" class="form-select form-select-sm">
+                        {% for val, label in [('not_assessed','Not assessed'), ('no','No'), ('yes','Yes')] %}
+                        <option value="{{ val }}" {% if case.physical and case.physical.patellar_tenderness == val %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-6 col-sm-3">
+                    <label class="form-label fw-semibold mb-1 small">Fibular head tenderness</label>
+                    <select name="fibular_head_tenderness" class="form-select form-select-sm">
+                        {% for val, label in [('not_assessed','Not assessed'), ('no','No'), ('yes','Yes')] %}
+                        <option value="{{ val }}" {% if case.physical and case.physical.fibular_head_tenderness == val %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-6 col-sm-3">
+                    <label class="form-label fw-semibold mb-1 small">Tibial tubercle</label>
+                    <select name="tibial_tubercle_tenderness" class="form-select form-select-sm">
+                        {% for val, label in [('not_assessed','Not assessed'), ('no','No'), ('yes','Yes')] %}
+                        <option value="{{ val }}" {% if case.physical and case.physical.tibial_tubercle_tenderness == val %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-6 col-sm-3">
+                    <label class="form-label fw-semibold mb-1 small">Collateral ligament line</label>
+                    <select name="collateral_tenderness" class="form-select form-select-sm">
+                        {% for val, label in [('not_assessed','Not assessed'), ('none','None'), ('mcl','MCL'), ('lcl','LCL'), ('both','Both')] %}
+                        <option value="{{ val }}" {% if case.physical and case.physical.collateral_tenderness == val %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── SECTION 3: RANGE OF MOTION ───────────────────────── -->
+    <div class="card mb-3">
+        <div class="card-header bg-primary text-white fw-semibold py-2 px-3">
+            <i class="bi bi-arrows-angle-expand me-1"></i> Range of Motion
+        </div>
+        <div class="card-body pb-2">
+
+            <!-- comparison table -->
+            <div class="table-responsive mb-3">
+                <table class="table table-sm table-bordered mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Measurement</th>
+                            <th>Involved</th>
+                            <th>Uninvolved</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td class="fw-semibold small">Flexion (°)</td>
+                            <td>
+                                <input type="number" name="rom_flexion_involved" class="form-control form-control-sm"
+                                    min="0" max="160" placeholder="0–160"
+                                    value="{{ case.physical.rom_flexion_involved if case.physical else '' }}">
+                            </td>
+                            <td>
+                                <input type="number" name="rom_flexion_uninvolved" class="form-control form-control-sm"
+                                    min="0" max="160" placeholder="0–160"
+                                    value="{{ case.physical.rom_flexion_uninvolved if case.physical else '' }}">
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="fw-semibold small">Extension (°)</td>
+                            <td>
+                                <input type="number" name="rom_extension_involved" class="form-control form-control-sm"
+                                    min="-20" max="20" placeholder="-20–20"
+                                    value="{{ case.physical.rom_extension_involved if case.physical else '' }}">
+                            </td>
+                            <td>
+                                <input type="number" name="rom_extension_uninvolved" class="form-control form-control-sm"
+                                    min="-20" max="20" placeholder="-20–20"
+                                    value="{{ case.physical.rom_extension_uninvolved if case.physical else '' }}">
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+<!-- addition 4 — explicit ottawa criterion, blank rom is not the same as unable -->
+
+<div class="row g-3 mb-3">
+    <div class="col-12 col-sm-6">
+        <label class="form-label fw-semibold mb-1">Able to flex knee to 90°</label>
+        <select name="able_to_flex_90" class="form-select form-select-sm">
+            {% for val, label in [('not_assessed','Not assessed'), ('yes','Yes'), ('no','No — unable')] %}
+            <option value="{{ val }}" {% if case.physical and case.physical.able_to_flex_90 == val %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+        <div class="form-text">Ottawa knee rule criterion — record explicitly rather than inferring from ROM.</div>
+    </div>
+</div>
+
+            <div class="row g-3 mb-3">
+                <div class="col-12 col-sm-6">
+                    <label class="form-label fw-semibold mb-1">End feel — flexion</label>
+                    <select name="end_feel_flexion" class="form-select form-select-sm">
+                        {% for val, label in [
+                            ('not_assessed','Not assessed'),
+                            ('tissue_approximation','Tissue approximation (normal)'),
+                            ('capsular','Capsular'),
+                            ('springy_block','Springy block'),
+                            ('spasm','Spasm'),
+                            ('bone_to_bone','Bone to bone'),
+                            ('empty_feel','Empty feel')
+                        ] %}
+                        <option value="{{ val }}" {% if case.physical and case.physical.end_feel_flexion == val %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-12 col-sm-6">
+                    <label class="form-label fw-semibold mb-1">End feel — extension</label>
+                    <select name="end_feel_extension" class="form-select form-select-sm">
+                        {% for val, label in [
+                            ('not_assessed','Not assessed'),
+                            ('bone_to_bone','Bone to bone (normal)'),
+                            ('capsular','Capsular'),
+                            ('springy_block','Springy block'),
+                            ('spasm','Spasm'),
+                            ('empty_feel','Empty feel')
+                        ] %}
+                        <option value="{{ val }}" {% if case.physical and case.physical.end_feel_extension == val %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <div class="row g-3 mb-2">
+                <div class="col-12 col-sm-6">
+                    <label class="form-label fw-semibold mb-1">Pain on movement</label>
+                    <select name="pain_on_movement" class="form-select form-select-sm">
+                        {% for val, label in [('none','None'), ('flexion','Flexion only'), ('extension','Extension only'), ('both','Both')] %}
+                        <option value="{{ val }}" {% if case.physical and case.physical.pain_on_movement == val %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-12 col-sm-6">
+                    <label class="form-label fw-semibold mb-1">Pain-resistance sequence</label>
+                    <select name="pain_resistance_sequence" class="form-select form-select-sm">
+                        {% for val, label in [
+                            ('not_assessed','Not assessed'),
+                            ('pain_before_resistance','Pain before resistance (acute)'),
+                            ('simultaneous','Simultaneous (subacute)'),
+                            ('resistance_before_pain','Resistance before pain (chronic)')
+                        ] %}
+                        <option value="{{ val }}" {% if case.physical and case.physical.pain_resistance_sequence == val %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                    <div class="form-text">Cyriax acuity classification.</div>
+                </div>
+            </div>
+
+            <div class="mb-2">
+                <label class="form-label fw-semibold mb-1">Extension lag</label>
+                <div class="d-flex gap-3">
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="extension_lag" value="no" id="lag_no"
+                            {% if not case.physical or case.physical.extension_lag == 'no' %}checked{% endif %}>
+                        <label class="form-check-label" for="lag_no">No</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="extension_lag" value="yes" id="lag_yes"
+                            {% if case.physical and case.physical.extension_lag == 'yes' %}checked{% endif %}>
+                        <label class="form-check-label" for="lag_yes">Yes</label>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- ── SECTION 4: FLEXIBILITY ────────────────────────────── -->
+    <div class="card mb-3">
+        <div class="card-header bg-primary text-white fw-semibold py-2 px-3">
+            <i class="bi bi-arrow-left-right me-1"></i> Flexibility
+        </div>
+        <div class="card-body pb-2">
+            <div class="row g-3">
+                <div class="col-12 col-sm-6">
+                    <label class="form-label fw-semibold mb-1">Hamstring flexibility</label>
+                    <select name="flexibility_hamstrings" class="form-select form-select-sm">
+                        {% for val, label in [('normal','Normal'), ('reduced','Reduced'), ('severely_reduced','Severely reduced')] %}
+                        <option value="{{ val }}" {% if case.physical and case.physical.flexibility_hamstrings == val %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                    <div class="form-text">Tightness increases patellofemoral compressive forces.</div>
+                </div>
+                <div class="col-12 col-sm-6">
+                    <label class="form-label fw-semibold mb-1">Gastroc / soleus flexibility</label>
+                    <select name="flexibility_gastroc_soleus" class="form-select form-select-sm">
+                        {% for val, label in [('normal','Normal'), ('reduced','Reduced'), ('severely_reduced','Severely reduced')] %}
+                        <option value="{{ val }}" {% if case.physical and case.physical.flexibility_gastroc_soleus == val %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                    <div class="form-text">Tightness drives compensatory pronation and medial knee torque.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── SECTION 5: MUSCLE STRENGTH ───────────────────────── -->
+    <div class="card mb-3">
+        <div class="card-header bg-primary text-white fw-semibold py-2 px-3">
+            <i class="bi bi-person-arms-up me-1"></i> Muscle Strength (MMT 0–5)
+        </div>
+        <div class="card-body pb-2">
+            <div class="form-text mb-2">0 = no contraction, 1 = flicker, 2 = gravity eliminated, 3 = against gravity, 4 = against resistance, 5 = normal.</div>
+            <div class="row g-3">
+                {% set mmt_groups = [
+                    ('mmt_quadriceps', 'Quadriceps'),
+                    ('mmt_hamstrings', 'Hamstrings'),
+                    ('mmt_hip_flexors', 'Hip flexors'),
+                    ('mmt_hip_abductors', 'Hip abductors'),
+                    ('mmt_hip_external_rotators', 'Hip external rotators'),
+                    ('mmt_gastroc_soleus', 'Gastroc / soleus'),
+                ] %}
+                {% for field, label in mmt_groups %}
+                <div class="col-6 col-sm-4">
+                    <label class="form-label fw-semibold mb-1 small">{{ label }}</label>
+                    <select name="{{ field }}" class="form-select form-select-sm"
+                        onchange="checkNeuroTrigger()">
+                        <option value="">—</option>
+                        {% for grade in ['0','1','2','3','4','5'] %}
+                        <option value="{{ grade }}"
+                            {% if case.physical and case.physical[field] == grade %}selected{% endif %}>
+                            {{ grade }}/5
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- ── SECTION 6: SPECIAL TESTS ─────────────────────────── -->
+    <div class="card mb-3">
+        <div class="card-header bg-primary text-white fw-semibold py-2 px-3">
+            <i class="bi bi-clipboard2-pulse-fill me-1"></i> Special Tests Already Performed
+        </div>
+        <div class="card-body pb-2">
+            <div class="form-text mb-2">Record results of any tests already completed. The agent will not re-suggest these.</div>
+            <div class="row g-2">
+                {% set special_tests = [
+                    ('test_lachman', 'Lachman test', 'ACL'),
+                    ('test_anterior_drawer', 'Anterior drawer', 'ACL / anteromedial band'),
+                    ('test_pivot_shift', 'Pivot shift', 'ACL / anterolateral rotary instability'),   
+                    ('test_posterior_drawer', 'Posterior drawer', 'PCL'),
+                    ('test_sag_sign', 'Sag sign', 'PCL'),
+                    ('test_valgus_0', 'Valgus stress 0°', 'MCL / PCL / ACL'),
+                    ('test_valgus_30', 'Valgus stress 30°', 'MCL / medial capsule'),
+                    ('test_varus_0', 'Varus stress 0°', 'LCL / PCL / ACL'),
+                    ('test_varus_30', 'Varus stress 30°', 'LCL / lateral capsule'),
+                    ('test_mcmurray', 'McMurray test', 'Meniscus'),
+                    ('test_thessaly', 'Thessaly test', 'Meniscus'),                                  
+                    ('test_apley_compression', 'Apley compression', 'Posterior meniscal horns'),
+                    ('test_apley_distraction', 'Apley distraction', 'Ligaments'),
+                    ('test_patellar_apprehension', 'Patellar apprehension', 'Patellofemoral / subluxation'),
+                ] %}
+                {% for field, label, structure in special_tests %}
+                <div class="col-12 col-sm-6">
+                    <div class="border rounded p-2">
+                        <label class="form-label fw-semibold mb-1 small d-block">
+                            {{ label }}
+                            <span class="text-muted fw-normal" style="font-size:0.72rem"> — {{ structure }}</span>
+                        </label>
+                        <div class="d-flex gap-2">
+                            {% for val, badge in [('not_done','secondary'), ('negative','success'), ('positive','danger')] %}
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio"
+                                    name="{{ field }}" value="{{ val }}" id="{{ field }}_{{ val }}"
+                                    {% if case.physical and case.physical.get(field) == val %}checked{% endif %}
+                                    {% if (not case.physical or not case.physical.get(field)) and val == 'not_done' %}checked{% endif %}
+                                    onchange="checkNeuroTrigger()">
+                                <label class="form-check-label small" for="{{ field }}_{{ val }}">
+                                    <span class="badge bg-{{ badge }}">{{ val | replace('_', ' ') | capitalize }}</span>
+                                </label>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+
+            <div class="mt-3">
+                <label class="form-label fw-semibold mb-1">Additional test notes</label>
+                <textarea name="special_tests_notes" class="form-control form-control-sm" rows="2"
+                    placeholder="Any other findings or tests not listed above">{{ case.physical.special_tests_notes if case.physical else '' }}</textarea>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── SECTION 7: NEURO SCREEN (conditional) ────────────── -->
+    <div class="card mb-3">
+        <div class="card-header bg-primary text-white fw-semibold py-2 px-3">
+            <i class="bi bi-lightning-charge-fill me-1"></i> Neurological Screen
+            <span class="badge bg-warning text-dark ms-2" id="neuro-badge">
+                {% if case.physical and case.physical.neuro_triggered == 'yes' %}Triggered{% else %}Not indicated{% endif %}
+            </span>
+        </div>
+        <div class="card-body pb-2">
+
+            <!-- manual override -->
+            <div class="mb-3">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="neuro_screen_requested"
+                        value="yes" id="neuro_manual"
+                        {% if case.physical and case.physical.neuro_screen_requested == 'yes' %}checked{% endif %}
+                        onchange="checkNeuroTrigger()">
+                    <label class="form-check-label small fw-semibold" for="neuro_manual">
+                        Request neuro screen manually
+                    </label>
+                </div>
+                <div class="form-text">
+                    Auto-triggers on: altered sensation, MMT ≤ 2/5, positive posterior drawer, or manual request above.
+                    {% if case.physical and case.physical.neuro_triggered == 'yes' %}
+                    <span class="text-warning fw-semibold">Currently triggered: {{ case.physical.neuro_trigger_reason }}.</span>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- neuro fields — locked until triggered -->
+            <div id="neuro-fields"
+                {% if not case.physical or case.physical.neuro_triggered != 'yes' %}style="display:none"{% endif %}>
+
+                <!-- sensation -->
+                <p class="fw-semibold small mb-2">Sensation by dermatome</p>
+                <div class="row g-2 mb-3">
+                    {% for dermatome, hint in [('l3','L3 — medial knee'), ('l4','L4 — medial lower leg'), ('l5','L5 — dorsum of foot'), ('s1','S1 — lateral foot / sole')] %}
+                    <div class="col-6 col-sm-3">
+                        <label class="form-label small fw-semibold mb-1">{{ hint }}</label>
+                        <select name="sensation_{{ dermatome }}" class="form-select form-select-sm">
+                            {% for val, label in [('intact','Intact'), ('reduced','Reduced'), ('absent','Absent')] %}
+                            <option value="{{ val }}"
+                                {% if case.physical and case.physical['sensation_' ~ dermatome] == val %}selected{% endif %}>
+                                {{ label }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <!-- reflexes -->
+                <p class="fw-semibold small mb-2">Reflexes</p>
+                <div class="row g-2 mb-3">
+                    {% for field, label in [('reflex_patella','Patella reflex (L3/L4)'), ('reflex_achilles','Achilles reflex (S1/S2)')] %}
+                    <div class="col-12 col-sm-6">
+                        <label class="form-label small fw-semibold mb-1">{{ label }}</label>
+                        <select name="{{ field }}" class="form-select form-select-sm">
+                            {% for val, lab in [('normal','Normal'), ('reduced','Reduced'), ('absent','Absent'), ('hyperreflexic','Hyperreflexic')] %}
+                            <option value="{{ val }}"
+                                {% if case.physical and case.physical[field] == val %}selected{% endif %}>
+                                {{ lab }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <!-- peroneal + balance -->
+                <div class="row g-2 mb-3">
+                    <div class="col-12 col-sm-4">
+                        <label class="form-label small fw-semibold mb-1">Peroneal — dorsiflexion</label>
+                        <select name="peroneal_dorsiflexion" class="form-select form-select-sm">
+                            {% for val, label in [('normal','Normal'), ('weak','Weak'), ('absent','Absent')] %}
+                            <option value="{{ val }}"
+                                {% if case.physical and case.physical.peroneal_dorsiflexion == val %}selected{% endif %}>
+                                {{ label }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-12 col-sm-4">
+                        <label class="form-label small fw-semibold mb-1">Single-leg balance</label>
+                        <select name="balance_single_leg" class="form-select form-select-sm">
+                            {% for val, label in [('maintained_10s','Maintained 10s'), ('unable','Unable')] %}
+                            <option value="{{ val }}"
+                                {% if case.physical and case.physical.balance_single_leg == val %}selected{% endif %}>
+                                {{ label }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-12 col-sm-4">
+                        <label class="form-label small fw-semibold mb-1">Mechanoreceptor involvement</label>
+                        <select name="mechanoreceptor_involvement" class="form-select form-select-sm">
+                            {% for val, label in [('not_suspected','Not suspected'), ('suspected','Suspected')] %}
+                            <option value="{{ val }}"
+                                {% if case.physical and case.physical.mechanoreceptor_involvement == val %}selected{% endif %}>
+                                {{ label }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+
+                <div class="mb-2">
+                    <label class="form-label fw-semibold mb-1 small">Neuro notes</label>
+                    <textarea name="neuro_notes" class="form-control form-control-sm" rows="2"
+                        placeholder="Any additional neurological findings">{{ case.physical.neuro_notes if case.physical else '' }}</textarea>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- submit -->
+    <div class="d-grid mb-4">
+        <button type="submit" class="btn btn-primary">
+            <i class="bi bi-check2-circle me-1"></i>
+            {% if case.physical %}Update physical examination{% else %}Save physical examination{% endif %}
+        </button>
+    </div>
+
+</form>
+
+<script>
+    function checkNeuroTrigger() {
+    // client-side mirror of the server-side trigger logic
+    // shows/hides neuro fields before form submit so the physio
+    // can fill them in during the same submission
+
+    var triggered = false;
+
+    // manual request
+    if (document.getElementById('neuro_manual').checked) {
+        triggered = true;
+    }
+
+    // altered sensation
+    if (document.querySelector('[name="altered_sensation_reported"]').value === 'yes') {
+        triggered = true;
+    }
+
+    // MMT <= 2
+    var mmtFields = [
+        'mmt_quadriceps', 'mmt_hamstrings', 'mmt_hip_flexors',
+        'mmt_hip_abductors', 'mmt_hip_external_rotators', 'mmt_gastroc_soleus'
+    ];
+    mmtFields.forEach(function(field) {
+        var val = document.querySelector('[name="' + field + '"]').value;
+        if (val && parseInt(val) <= 2) {
+            triggered = true;
+        }
+    });
+
+    // positive posterior drawer
+    var pd = document.querySelector('[name="test_posterior_drawer"]:checked');
+    if (pd && pd.value === 'positive') {
+        triggered = true;
+    }
+
+    // show or hide neuro fields
+    var neuroFields = document.getElementById('neuro-fields');
+    var neuroBadge = document.getElementById('neuro-badge');
+
+    if (triggered) {
+        neuroFields.style.display = 'block';
+        neuroBadge.textContent = 'Triggered';
+        neuroBadge.className = 'badge bg-danger ms-2';
+    } else {
+        neuroFields.style.display = 'none';
+        neuroBadge.textContent = 'Not indicated';
+        neuroBadge.className = 'badge bg-warning text-dark ms-2';
+    }
+
+    // addition 1 — stop hidden neuro fields from posting default values
+    // a hidden select still submits its first option, which would write
+    // a full normal neuro screen into mongo that nobody actually performed
+    // disabled fields are skipped by the browser when the form is submitted
+    var neuroInputs = neuroFields.querySelectorAll('select, textarea');
+    for (var i = 0; i < neuroInputs.length; i++) {
+        neuroInputs[i].disabled = !triggered;
+    }
+}
+
+// addition 2 — run once on page load so the disabled state matches
+// what jinja rendered, not just what the physio clicks afterwards
+window.addEventListener('load', checkNeuroTrigger);
+</script>
+
+{% endblock %}

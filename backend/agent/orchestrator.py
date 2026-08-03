@@ -4,7 +4,7 @@
 # a single acute-knee assessment turn, combining the DETERMINISTIC safety
 # layer with the LLM agent, and keeps them architecturally separate.
 #
-# Design (Option A - safety as a hard gate, NOT as agent tools):
+# Design ( safety as a hard gate, NOT as agent tools):
 #
 #   1. RED-FLAG SCREEN  - deterministic. Runs FIRST, before the LLM sees
 #                         anything. If a red flag fires, we STOP and return
@@ -25,7 +25,7 @@
 #                         and structurally separate so a clinician never
 #                         mistakes an LLM suggestion for a verified rule.
 #
-# Why this structure matters (dissertation argument): the safety-critical
+# Why this structure matters (my argument): the safety-critical
 # outputs are produced by deterministic Python, outside the LLM's control.
 # The LLM cannot forget to run a check, cannot run it wrong, and cannot
 # talk itself out of a red flag. That is the core safety claim of Cygnus.
@@ -55,7 +55,35 @@ from langchain_groq import ChatGroq
 # ===========================================================
 
 
-LLM_MODEL = "llama-3.3-70b-versatile"   # groq hosted - much bigger model LLM_MODEL = "llama3.2:3b"     # was "llama3.1:8b"
+LLM_MODEL = "llama-3.3-70b-versatile"
+
+
+# addition 2
+# the agent runs on either backend, the choice is a deployment decision not an architectural one
+# local keeps all data on the machine, hosted gives better reasoning at the cost of sending
+# case data and retrieved corpus text to a third party
+LLM_BACKEND = os.getenv('LLM_BACKEND', 'groq')
+
+
+def buildLlm():
+    if LLM_BACKEND == 'local':
+        # imported here so langchain-ollama is only needed when the local path is used
+        from langchain_ollama import ChatOllama
+        print('using local backend: llama3.2:3b')
+        return ChatOllama(
+            model='llama3.2:3b',
+            temperature=0,
+            num_predict=350,
+            num_ctx=2048,
+        )
+
+    print('using hosted backend:', LLM_MODEL)
+    return ChatGroq(
+        model=LLM_MODEL,
+        temperature=0,
+        max_tokens=500,
+        api_key=os.getenv('GROQ_API_KEY'),
+    )   # groq hosted - much bigger model LLM_MODEL = "llama3.2:3b"     # was "llama3.1:8b"
 
 # System prompt for the agent. It is told, explicitly, that the safety
 # results are already decided and are not its job. Its job is test
@@ -91,6 +119,12 @@ For example: 'Lachman test ACL', 'McMurray test meniscus', \
 e.g. [magee_ch12] or [jospt_acl_cpg] next to each claim you make.
 - If a test is not found in the corpus, say so explicitly. Do NOT \
 invent descriptions from general knowledge.
+
+CLINICAL REASONING WITH PHYSICAL FINDINGS:
+- If physical examination findings are provided, use them to prioritise your \
+test suggestions. A muscle grade marked "(pain limited)" or "(effusion limited)" \
+reflects inhibition, NOT neurological weakness - do not interpret it as a \
+neurological finding.
 """
 
 
@@ -191,12 +225,12 @@ def run_assessment(red_flag_input, ottawa_input, pittsburgh_input, clinician_que
     # reasons about test prioritisation and pulls evidence, but cannot touch
     # the safety conclusions.
 
-    llm = ChatGroq(
-    model=LLM_MODEL,
-    temperature=0,
-    max_tokens=500,         # replaces num_predict
-    api_key=os.getenv('GROQ_API_KEY'),
-)
+    llm = buildLlm()
+   # replacing with  llm = ChatGroq(
+   # model=LLM_MODEL,
+  ## max_tokens=500,         # replaces num_predict
+   # api_key=os.getenv##('GROQ_API_KEY'),
+#)
 
     agent = create_agent(
         model=llm,
@@ -277,15 +311,10 @@ def _extract_final_text(response):
 # ===========================================================
 # Quick manual test
 # ===========================================================
-def run_agent_only(query, safety_facts):
+def run_agent_only(query, safety_facts, physical_dict=None):
     # thin wrapper so main.py can call the agent without re-running the
     # deterministic gates (those already ran when the case was created)
-    llm = ChatGroq(
-        model=LLM_MODEL,
-        temperature=0,
-        max_tokens=500,
-        api_key=os.getenv('GROQ_API_KEY'),
-    ) 
+    llm = buildLlm() 
     # changed num_ctx from 2048 to 1024 to reduce context window and prevent potential memory issues
 
     agent = create_agent(
@@ -294,8 +323,26 @@ def run_agent_only(query, safety_facts):
         system_prompt=AGENT_SYSTEM_PROMPT,
     )
 
-    # inject the pre-computed safety facts plus the clinician question
-    full_prompt = safety_facts + "\n\nCLINICIAN QUESTION: " + query
+    agent = create_agent(
+        model=llm,
+        tools=[search_corpus],
+        system_prompt=AGENT_SYSTEM_PROMPT,
+    )
+
+    # addition 3
+    # physical findings are recorded observations, not rule outputs, so they go in their own
+    # labelled block rather than inside the ESTABLISHED FACTS header
+    physical_block = ''
+    if physical_dict:
+        physical_text = formatPhysicalForAgent(physical_dict)
+        physical_block = (
+            '\n\nPHYSICAL EXAMINATION (recorded by the clinician, do not contradict):\n'
+            + physical_text
+        )
+
+    # inject the pre-computed safety facts, the physical findings and the clinician question
+    full_prompt = safety_facts + physical_block + "\n\nCLINICIAN QUESTION: " + query
+
 
     response = agent.invoke(
         {"messages": [{"role": "user", "content": full_prompt}]},
