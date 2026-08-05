@@ -268,7 +268,7 @@ def run_assessment(red_flag_input, ottawa_input, pittsburgh_input, clinician_que
 
     # create_agent returns a runnable that takes a messages list.
     response = agent.invoke({
-        "messages": [{"role": "user", "content": facts_block}]}, config={"recursion_limit": 4},
+        "messages": [{"role": "user", "content": facts_block}]}, config={"recursion_limit": 10},
     )
 
     # Extract the agent's final text. The exact shape of the response may
@@ -346,8 +346,8 @@ def run_agent_only(query, safety_facts, physical_dict=None):
 
     response = agent.invoke(
         {"messages": [{"role": "user", "content": full_prompt}]},
-        config={"recursion_limit": 4},
-    ) # recursion_limit=4 is the minimum needed for one tool call + final answer
+        config={"recursion_limit": 10},
+    ) # recursion_limit=10 allows several retrieval steps before answering
 
     suggestion = _extract_final_text(response)
 

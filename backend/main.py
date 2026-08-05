@@ -17,6 +17,16 @@ from backend.safety.red_flags import screen_red_flags, RedFlagInput
 from backend.agent.orchestrator import run_agent_only, run_assessment
 # add this import at the top of main.py with your other imports
 from backend.safety.neuro_trigger import check_neuro_trigger
+def _readable(value):
+    if value in ("", "not_assessed", "not_done", None):
+        return "not recorded"
+    return value
+
+def _case_fingerprint(case):
+    # a short signature of the inputs a suggestion was built from
+    # if this changes, the suggestion is out of date and must regenerate
+    # assumes pymongo returns field order consistently, which it does
+    return str(case.get('history', {})) + str(case.get('physical', {}))
 
 app = FastAPI(
     title="Knee CDS API",
@@ -170,76 +180,6 @@ async def case_history_submit(request: Request, case_id: str):
         status_code=status.HTTP_302_FOUND,
     )
 
-# extend query with physical findings if they exist
-    physical = case.get('physical')
-
-    if physical:
-        # ROM summary
-        flex_inv = physical.get('rom_flexion_involved', 'not recorded')
-        flex_uninv = physical.get('rom_flexion_uninvolved', 'not recorded')
-        ext_inv = physical.get('rom_extension_involved', 'not recorded')
-
-        # MMT — only include recorded grades
-        mmt_findings = []
-        mmt_map = {
-            'mmt_quadriceps': 'quadriceps',
-            'mmt_hamstrings': 'hamstrings',
-            'mmt_hip_flexors': 'hip flexors',
-            'mmt_hip_abductors': 'hip abductors',
-            'mmt_gastroc_soleus': 'gastroc/soleus',
-        }
-        for field, label in mmt_map.items():
-            val = physical.get(field, '')
-            if val:
-                mmt_findings.append(f'{label} {val}/5')
-        mmt_str = ', '.join(mmt_findings) if mmt_findings else 'not recorded'
-
-        # special tests already done
-        tests_done = []
-        test_map = {
-            'test_lachman': 'Lachman',
-            'test_anterior_drawer': 'anterior drawer',
-            'test_posterior_drawer': 'posterior drawer',
-            'test_valgus_30': 'valgus stress 30°',
-            'test_varus_30': 'varus stress 30°',
-            'test_mcmurray': 'McMurray',
-            'test_patellar_apprehension': 'patellar apprehension',
-        }
-        for field, label in test_map.items():
-            val = physical.get(field, '')
-            if val and val != 'not_done':
-                tests_done.append(f'{label}: {val}')
-        tests_str = ', '.join(tests_done) if tests_done else 'none recorded'
-
-        physical_context = (
-            f"Physical findings: gait {physical.get('gait', 'not recorded')}, "
-            f"effusion {physical.get('effusion', 'not recorded')} "
-            f"({physical.get('effusion_type', '')}), "
-            f"joint line tenderness {physical.get('joint_line_tenderness', 'not recorded')}, "
-            f"temperature {physical.get('temperature', 'not recorded')}. "
-            f"ROM: flexion {flex_inv} degrees (uninvolved {flex_uninv} degrees), "
-            f"extension {ext_inv} degrees, "
-            f"end feel flexion {physical.get('end_feel_flexion', 'not recorded')}, "
-            f"pain-resistance sequence "
-            f"{physical.get('pain_resistance_sequence', 'not recorded')}. "
-            f"Strength: {mmt_str}. "
-            f"Special tests performed: {tests_str}. "
-        )
-
-        if physical.get('neuro_triggered') == 'yes':
-            physical_context += (
-                f"Neuro screen triggered "
-                f"({physical.get('neuro_trigger_reason', '')}): "
-                f"L3 sensation {physical.get('sensation_l3', 'not recorded')}, "
-                f"L4 {physical.get('sensation_l4', 'not recorded')}, "
-                f"patella reflex {physical.get('reflex_patella', 'not recorded')}, "
-                f"peroneal dorsiflexion "
-                f"{physical.get('peroneal_dorsiflexion', 'not recorded')}. "
-            )
-
-        # append physical context to the query
-        query = query + ' ' + physical_context
-
     print(query)
 
 @app.get("/cases/{case_id}/exam")
@@ -392,7 +332,13 @@ async def case_exam_submit(request: Request, case_id: str):
     store.save_assessment(case_id, assessment)
 
     # go to the summary tab, where the result (or the halt) is shown
-    return RedirectResponse(f"/cases/{case_id}/summary", status_code=302)
+    # a positive red flag halts the pathway, so go straight to summary
+    # where the escalation notice is displayed rather than continuing
+    # to hands-on examination of a knee that needs escalation
+    if red_flag_result.escalate_immediately:
+        return RedirectResponse(f"/cases/{case_id}/summary", status_code=302)
+
+    return RedirectResponse(f"/cases/{case_id}/physical", status_code=302)
 
 # -----------------------------------------------------------
 # POST /cases/{case_id}/suggest
@@ -523,8 +469,13 @@ async def case_suggest_async(request: Request, case_id: str):
     if assessment.get("red_flag_positive"):
         return {"status": "red_flag_halted"}
 
-    # if suggestion already exists, nothing to do
-    if assessment.get("agent_suggestion"):
+    # only skip if the suggestion matches the data currently in the case
+    # submitting physical findings changes the fingerprint, which forces a
+    # regeneration rather than serving a suggestion built from history alone
+    current_fingerprint = _case_fingerprint(case)
+
+    if assessment.get("agent_suggestion") and \
+       assessment.get("agent_suggestion_fingerprint") == current_fingerprint:
         return {"status": "already_done"}
 
     # mark the suggestion as pending so the UI shows the spinner
@@ -607,19 +558,117 @@ async def case_suggest_async(request: Request, case_id: str):
             + (pop_str + ' ' if pop_str else '')
             + (swelling_fact + ' ' if swelling_fact else '')
             + (weight_bearing_fact + ' ' if weight_bearing_fact else '')
-            + 'Which special tests should be prioritised and in what order?'
         )
 
     else:
         # no history recorded yet — use the generic fallback query
         query = (
-            'Given an acute knee injury with no red flags, which physical '
-            'special tests should be prioritised, and what does each assess?'
+            'Given an acute knee injury with no red flags. '
+
         )
+     # addition — extend the query with physical findings if recorded
+    # this block previously sat after a return statement in the history
+    # route and never executed, so the agent never saw physical findings
+    physical = case.get('physical')
+
+    if physical:
+        flex_inv = _readable(physical.get('rom_flexion_involved'))
+        flex_uninv = _readable(physical.get('rom_flexion_uninvolved'))
+        ext_inv = _readable(physical.get('rom_extension_involved'))
+
+        # MMT — only include recorded grades
+        mmt_findings = []
+        mmt_map = {
+            'mmt_quadriceps': 'quadriceps',
+            'mmt_hamstrings': 'hamstrings',
+            'mmt_hip_flexors': 'hip flexors',
+            'mmt_hip_abductors': 'hip abductors',
+            'mmt_hip_external_rotators': 'hip external rotators',
+            'mmt_gastroc_soleus': 'gastroc/soleus',
+        }
+        for field, label in mmt_map.items():
+            val = physical.get(field, '')
+            if val:
+                mmt_findings.append(f'{label} {val}/5')
+        mmt_str = ', '.join(mmt_findings) if mmt_findings else 'not recorded'
+
+        # special tests already done — the agent should not re-suggest these
+        tests_done = []
+        test_map = {
+            'test_lachman': 'Lachman',
+            'test_anterior_drawer': 'anterior drawer',
+            'test_pivot_shift': 'pivot shift',
+            'test_posterior_drawer': 'posterior drawer',
+            'test_sag_sign': 'sag sign',
+            'test_valgus_0': 'valgus stress 0°',
+            'test_valgus_30': 'valgus stress 30°',
+            'test_varus_0': 'varus stress 0°',
+            'test_varus_30': 'varus stress 30°',
+            'test_mcmurray': 'McMurray',
+            'test_thessaly': 'Thessaly',
+            'test_apley_compression': 'Apley compression',
+            'test_apley_distraction': 'Apley distraction',
+            'test_patellar_apprehension': 'patellar apprehension',
+        }
+        for field, label in test_map.items():
+            val = physical.get(field, '')
+            if val and val != 'not_done':
+                tests_done.append(f'{label}: {val}')
+        tests_str = ', '.join(tests_done) if tests_done else 'none recorded'
+
+        # bony palpation points
+        palp_findings = []
+        palp_map = {
+            'patellar_tenderness': 'patellar tenderness',
+            'fibular_head_tenderness': 'fibular head tenderness',
+            'tibial_tubercle_tenderness': 'tibial tubercle tenderness',
+        }
+        for field, label in palp_map.items():
+            if physical.get(field) == 'yes':
+                palp_findings.append(label)
+        palp_str = ', '.join(palp_findings) if palp_findings else 'none recorded'
+
+        physical_context = (
+            f"Physical findings: gait {_readable(physical.get('gait'))}, "
+            f"effusion {_readable(physical.get('effusion'))} "
+            f"({_readable(physical.get('effusion_type'))}), "
+            f"joint line tenderness {_readable(physical.get('joint_line_tenderness'))}, "
+            f"collateral ligament line tenderness "
+            f"{_readable(physical.get('collateral_tenderness'))}, "
+            f"bony tenderness: {palp_str}, "
+            f"temperature {_readable(physical.get('temperature'))}. "
+            f"ROM: flexion {flex_inv} degrees (uninvolved {flex_uninv} degrees), "
+            f"extension {ext_inv} degrees, "
+            f"able to flex to 90°: {_readable(physical.get('able_to_flex_90'))}, "
+            f"end feel flexion {_readable(physical.get('end_feel_flexion'))}, "
+            f"pain-resistance sequence "
+            f"{_readable(physical.get('pain_resistance_sequence'))}. "
+            f"Strength: {mmt_str}. "
+            f"Special tests already performed: {tests_str}. "
+        )
+
+        if physical.get('neuro_triggered') == 'yes':
+            physical_context += (
+                f"Neuro screen triggered "
+                f"({physical.get('neuro_trigger_reason', '')}): "
+                f"L3 sensation {_readable(physical.get('sensation_l3'))}, "
+                f"L4 {_readable(physical.get('sensation_l4'))}, "
+                f"L5 {_readable(physical.get('sensation_l5'))}, "
+                f"S1 {_readable(physical.get('sensation_s1'))}, "
+                f"patella reflex {_readable(physical.get('reflex_patella'))}, "
+                f"achilles reflex {_readable(physical.get('reflex_achilles'))}, "
+                f"peroneal dorsiflexion "
+                f"{_readable(physical.get('peroneal_dorsiflexion'))}. "
+            )
+
+        query = query + physical_context
+
+    # the question always goes last so the agent reads all findings first
+    query = query + 'Which special tests should be prioritised and in what order?'
 
     print(query)
 
-    # run the slow agent call in a background thread so we return immediately
+  
   
 
     # run the slow agent call in a background thread so we return immediately
@@ -637,9 +686,10 @@ async def case_suggest_async(request: Request, case_id: str):
 
             # save the suggestion and mark status as done
             assessment["agent_suggestion"] = result["suggestion"]
+            assessment["agent_suggestion_fingerprint"] = current_fingerprint
             assessment["agent_suggestion_status"] = "done"
             store.save_assessment(case_id, assessment)
-
+            
         except Exception as e:
             print(f"agent error: {e}")
             # mark as failed so the UI can show an error message
@@ -729,7 +779,7 @@ async def case_physical_submit(request: Request, case_id: str):
         'popliteal_tenderness': form.get('popliteal_tenderness', 'no'),
 
         # addition 1 — bony palpation points, documentation only
-        # ottawa reads its own fields from history, these do not feed the gate
+        # ottawa reads its own fields from the exam form, these do not feed the gate
         'patellar_tenderness': form.get('patellar_tenderness', 'not_assessed'),
         'fibular_head_tenderness': form.get('fibular_head_tenderness', 'not_assessed'),
         'tibial_tubercle_tenderness': form.get('tibial_tubercle_tenderness', 'not_assessed'),

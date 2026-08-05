@@ -29,7 +29,8 @@ from langchain_text_splitters import (
 
 # Where ChromaDB stores its files on the external drive.
 # Must match retriever.py.
-CHROMA_PATH = "/media/anriel/LENOVO_USB_HDD/knee_cds/chroma_db"
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+CHROMA_PATH = str(PROJECT_ROOT / "chroma_db")
 
 # The name of the single collection where all chunks live.
 # Must match retriever.py.
@@ -40,7 +41,7 @@ COLLECTION_NAME = "cygnus_corpus"
 EMBEDDING_MODEL = "nomic-embed-text"
 
 # Root folder of the corpus. Adjust if your layout is different.
-CORPUS_ROOT = Path("/media/anriel/LENOVO_USB_HDD/knee_cds/corpus/guidelines")
+CORPUS_ROOT = PROJECT_ROOT / "corpus" / "guidelines"
 
 # Subfolder that contains the atomic special-test stub files.
 # Every .md file inside this folder becomes exactly one chunk.

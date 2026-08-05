@@ -4,6 +4,7 @@
 # Returns chunk IDs + scores + text + metadata so the agent can
 # use them and the agentLog can store IDs and scores.
 
+from pathlib import Path
 from langchain_chroma import Chroma
 from langchain_ollama import OllamaEmbeddings
 
@@ -12,9 +13,10 @@ from langchain_ollama import OllamaEmbeddings
 # Settings (all in one place so they're easy to change later)
 # -----------------------------------------------------------
 
-# Where ChromaDB stores its files on the external drive.
+# Where ChromaDB stores its files, resolved relative to the project root.
 # This must match the path used in ingest.py.
-CHROMA_PATH = "/media/anriel/LENOVO_USB_HDD/knee_cds/chroma_db"
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+CHROMA_PATH = str(PROJECT_ROOT / "chroma_db")
 
 # The name of the single collection where all chunks live.
 # This must match the name used in ingest.py.
