@@ -1,0 +1,439 @@
+{% extends "case_workspace.html" %}
+{% block tab_content %}
+
+<style>
+  .phys-edit { max-width: 720px; margin: 0 auto; padding-bottom: 100px; }
+
+  .phys-edit .edit-header {
+    display: flex; align-items: center; gap: 0.75rem;
+    margin-bottom: 1rem;
+  }
+  .phys-edit .edit-header a {
+    color: var(--bs-secondary, #6c757d);
+    text-decoration: none; font-size: 1.1rem; padding: 0.25rem;
+  }
+  .phys-edit .edit-header h2 {
+    font-size: 1.15rem; font-weight: 600; margin: 0; flex: 1;
+  }
+
+  .edit-section {
+    border: 1px solid var(--bs-border-color, #dee2e6);
+    border-radius: 0.75rem;
+    background: var(--bs-body-bg, #fff);
+    margin-bottom: 1rem;
+    overflow: hidden;
+  }
+  .edit-section .sec-head {
+    display: flex; align-items: center; gap: 0.5rem;
+    padding: 0.875rem 1rem;
+    font-weight: 600; font-size: 0.9rem;
+    border-bottom: 1px solid var(--bs-border-color-translucent, rgba(0,0,0,0.06));
+    background: var(--bs-tertiary-bg, #f8f9fa);
+  }
+  .edit-section .sec-body { padding: 1rem; }
+
+  /* MMT Row — now stacked, because the limiter row needs full width */
+  .mmt-row {
+    padding: 1rem 0;
+    border-bottom: 1px solid var(--bs-border-color-translucent, rgba(0,0,0,0.06));
+  }
+  .mmt-row:last-child { border-bottom: none; padding-bottom: 0; }
+  .mmt-row:first-child { padding-top: 0; }
+
+  .mmt-head {
+    display: flex; align-items: flex-start;
+    justify-content: space-between; gap: 1rem;
+    flex-wrap: wrap;
+  }
+
+  .mmt-muscle { font-size: 0.95rem; font-weight: 600; }
+  .mmt-muscle .nerve {
+    font-size: 0.75rem; color: var(--bs-secondary, #6c757d);
+    font-weight: 400; display: block; margin-top: 0.15rem;
+  }
+  .mmt-muscle .action {
+    font-size: 0.75rem; color: var(--bs-secondary, #6c757d);
+    font-weight: 400; margin-top: 0.1rem;
+  }
+
+  .mmt-grades { display: flex; gap: 0.35rem; }
+
+  .grade-btn {
+    width: 42px; height: 42px;
+    border-radius: 0.5rem;
+    border: 1px solid var(--bs-border-color, #dee2e6);
+    background: transparent;
+    font-size: 0.9rem; font-weight: 600;
+    cursor: pointer;
+    transition: all 0.12s ease;
+    color: var(--bs-secondary, #6c757d);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .grade-btn:hover { background: var(--bs-tertiary-bg, #f8f9fa); }
+  .grade-btn:active { transform: scale(0.93); }
+
+  .grade-btn.g0.active, .grade-btn.g1.active {
+    background: var(--bs-danger, #dc3545); color: #fff;
+    border-color: var(--bs-danger, #dc3545);
+  }
+  .grade-btn.g2.active {
+    background: #e67e22; color: #fff; border-color: #e67e22;
+  }
+  .grade-btn.g3.active {
+    background: var(--bs-warning, #ffc107); color: #000;
+    border-color: var(--bs-warning, #ffc107);
+  }
+  .grade-btn.g4.active {
+    background: #5cb85c; color: #fff; border-color: #5cb85c;
+  }
+  .grade-btn.g5.active {
+    background: var(--bs-success, #198754); color: #fff;
+    border-color: var(--bs-success, #198754);
+  }
+
+  /* Limiter row — hidden until a grade is selected */
+  .limiter-row {
+    display: none;
+    align-items: center; gap: 0.5rem;
+    margin-top: 0.75rem;
+    padding-top: 0.625rem;
+    border-top: 1px dashed var(--bs-border-color, #dee2e6);
+    flex-wrap: wrap;
+  }
+  .limiter-row.show { display: flex; }
+
+  .limiter-label {
+    font-size: 0.75rem; font-weight: 600;
+    color: var(--bs-secondary, #6c757d);
+    text-transform: uppercase; letter-spacing: 0.3px;
+    flex-shrink: 0;
+  }
+
+  .limiter-chips { display: flex; gap: 0.3rem; flex-wrap: wrap; }
+
+  .limiter-chip {
+    padding: 0.35rem 0.7rem;
+    border-radius: 0.4rem;
+    border: 1px solid var(--bs-border-color, #dee2e6);
+    font-size: 0.78rem; font-weight: 500;
+    cursor: pointer; user-select: none;
+    background: transparent; color: var(--bs-secondary, #6c757d);
+    transition: all 0.12s ease;
+    min-height: 34px; display: flex; align-items: center;
+  }
+  .limiter-chip:hover { background: var(--bs-tertiary-bg, #f8f9fa); }
+  .limiter-chip:active { transform: scale(0.95); }
+  .limiter-chip.active {
+    background: var(--bs-info, #0dcaf0); color: #000;
+    border-color: var(--bs-info, #0dcaf0);
+  }
+  .limiter-chip.active.none-chip {
+    background: var(--bs-secondary, #6c757d); color: #fff;
+    border-color: var(--bs-secondary, #6c757d);
+  }
+
+  /* Neuro trigger banner */
+  .neuro-banner {
+    display: none;
+    margin: 0 0 1rem;
+    padding: 0.875rem 1rem;
+    border-radius: 0.5rem;
+    background: var(--bs-danger-bg-subtle, #f8d7da);
+    border: 1px solid var(--bs-danger-border-subtle, #f1aeb5);
+  }
+  .neuro-banner.show { display: block; }
+  .neuro-banner .title {
+    font-size: 0.9rem; font-weight: 600;
+    color: var(--bs-danger, #dc3545);
+    display: flex; align-items: center; gap: 0.4rem;
+  }
+  .neuro-banner .reason {
+    font-size: 0.8rem; color: var(--bs-secondary, #6c757d);
+    margin-top: 0.2rem;
+  }
+  .neuro-banner a {
+    font-size: 0.8rem; font-weight: 500;
+    color: var(--bs-danger, #dc3545);
+    text-decoration: underline;
+  }
+
+  /* Inhibition banner — weakness present but not neurological */
+  .inhibition-banner {
+    display: none;
+    margin: 0 0 1rem;
+    padding: 0.875rem 1rem;
+    border-radius: 0.5rem;
+    background: var(--bs-info-bg-subtle, #cff4fc);
+    border: 1px solid var(--bs-info-border-subtle, #9eeaf9);
+  }
+  .inhibition-banner.show { display: block; }
+  .inhibition-banner .title {
+    font-size: 0.9rem; font-weight: 600;
+    color: var(--bs-info-text, #055160);
+    display: flex; align-items: center; gap: 0.4rem;
+  }
+  .inhibition-banner .reason {
+    font-size: 0.8rem; color: var(--bs-secondary, #6c757d);
+    margin-top: 0.2rem;
+  }
+
+  /* Legend */
+  .grade-legend {
+    display: flex; flex-wrap: wrap; gap: 0.5rem;
+    margin-bottom: 1rem;
+  }
+  .legend-item {
+    display: flex; align-items: center; gap: 0.35rem;
+    font-size: 0.75rem; color: var(--bs-secondary, #6c757d);
+  }
+  .legend-dot { width: 10px; height: 10px; border-radius: 3px; }
+
+  /* Notes */
+  .form-textarea {
+    width: 100%; min-height: 80px;
+    padding: 0.625rem 0.75rem;
+    border: 1px solid var(--bs-border-color, #dee2e6);
+    border-radius: 0.5rem;
+    background: var(--bs-body-bg, #fff);
+    color: var(--bs-body-color, #212529);
+    resize: vertical; font-family: inherit; font-size: 0.9rem;
+  }
+  .form-textarea::placeholder { color: var(--bs-secondary, #adb5bd); }
+
+  /* Save bar */
+  .save-bar {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    padding: 0.75rem 1rem;
+    background: var(--bs-body-bg, #fff);
+    border-top: 1px solid var(--bs-border-color, #dee2e6);
+    display: flex; gap: 0.5rem; z-index: 1030;
+    box-shadow: 0 -2px 10px rgba(0,0,0,0.04);
+  }
+  .save-bar .btn { flex: 1; min-height: 48px; font-weight: 500; }
+
+  /* Mobile */
+  @media (max-width: 576px) {
+    .phys-edit { padding: 0 0.5rem 100px; }
+    .mmt-head { flex-direction: column; gap: 0.75rem; }
+    .grade-btn { width: 48px; height: 48px; font-size: 1rem; }
+    .limiter-row { flex-direction: column; align-items: flex-start; gap: 0.4rem; }
+    .limiter-chips { width: 100%; }
+    .limiter-chip { flex: 1; justify-content: center; min-height: 40px; }
+  }
+  @media (max-width: 360px) {
+    .grade-btn { width: 42px; height: 42px; }
+  }
+</style>
+
+<div class="phys-edit">
+
+  <div class="edit-header">
+    <a href="/cases/{{ case.id }}/physical"><i class="bi bi-arrow-left"></i></a>
+    <h2>Muscle Strength (MMT)</h2>
+    <span class="text-muted small">{{ case.patient_label or 'Patient' }}</span>
+  </div>
+
+  <!-- Grade legend -->
+  <div class="grade-legend">
+    <div class="legend-item"><div class="legend-dot" style="background:#dc3545"></div>0–1 Severe</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#e67e22"></div>2 Moderate</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#ffc107"></div>3 Fair</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#5cb85c"></div>4 Good</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#198754"></div>5 Normal</div>
+  </div>
+
+  <!-- Neuro trigger banner — a low grade with no limiter -->
+  <div class="neuro-banner" id="neuro-banner">
+    <div class="title"><i class="bi bi-exclamation-triangle-fill"></i> Neurological screen triggered</div>
+    <div class="reason" id="neuro-reason">Muscle grade ≤ 2 detected.</div>
+    <a href="/cases/{{ case.id }}/physical/edit/neuro">Open neuro screen →</a>
+  </div>
+
+  <!-- Inhibition banner — a low grade explained by pain or effusion -->
+  <div class="inhibition-banner" id="inhibition-banner">
+    <div class="title"><i class="bi bi-info-circle-fill"></i> Weakness attributed to pain or effusion</div>
+    <div class="reason" id="inhibition-reason">
+      The neuro screen is not triggered by these grades. Re-test when the joint settles.
+    </div>
+  </div>
+
+  <form id="mmt-form" action="/cases/{{ case.id }}/physical/edit/mmt" method="post">
+
+    <div class="edit-section">
+      <div class="sec-head"><i class="bi bi-person-arms-up me-1"></i> Manual Muscle Test — 0 to 5</div>
+      <div class="sec-body">
+
+        {% set muscles = [
+          ('mmt_quadriceps', 'Quadriceps', 'L3–L4, femoral nerve', 'Knee extension'),
+          ('mmt_hamstrings', 'Hamstrings', 'L5–S1–S2, sciatic nerve', 'Knee flexion'),
+          ('mmt_hip_flexors', 'Hip flexors', 'L1–L3, femoral nerve', 'Hip flexion'),
+          ('mmt_hip_abductors', 'Hip abductors', 'L4–L5, superior gluteal nerve', 'Hip abduction — dynamic knee valgus control'),
+          ('mmt_hip_external_rotators', 'Hip external rotators', 'L5–S1, inferior gluteal nerve', 'Hip external rotation'),
+          ('mmt_gastroc_soleus', 'Gastrocnemius / soleus', 'S1–S2, tibial nerve', 'Ankle plantarflexion'),
+        ] %}
+
+        {% for field, name, nerve, action in muscles %}
+        {% set grade_val = case.physical.get(field) if case.physical else '' %}
+        {% set limiter_val = case.physical.get(field ~ '_limiter') if case.physical else '' %}
+        <div class="mmt-row">
+
+          <div class="mmt-head">
+            <div class="mmt-muscle">
+              {{ name }}
+              <span class="nerve">{{ nerve }}</span>
+              <span class="action">{{ action }}</span>
+            </div>
+            <div class="mmt-grades" id="grades-{{ field }}">
+              {% for g in ['0','1','2','3','4','5'] %}
+              <button type="button"
+                class="grade-btn g{{ g }} {% if grade_val == g %}active{% endif %}"
+                onclick="selectGrade(this,'{{ field }}');"
+                aria-label="Grade {{ g }}">{{ g }}</button>
+              {% endfor %}
+            </div>
+          </div>
+
+          <!--
+            Limiter. A grade of 2/5 caused by pain guarding is not the same finding as
+            a grade of 2/5 caused by nerve involvement, and only the second should
+            trigger the neurological screen. check_neuro_trigger reads this field
+            before firing on the grade.
+          -->
+          <div class="limiter-row {% if grade_val %}show{% endif %}" id="limiter-row-{{ field }}">
+            <span class="limiter-label">Limited by</span>
+            <div class="limiter-chips" id="limiter-chips-{{ field }}">
+              {% for lval, llabel in [
+                ('', 'Nothing'),
+                ('pain', 'Pain'),
+                ('effusion', 'Effusion'),
+                ('not_tested', 'Not tested')
+              ] %}
+              <div class="limiter-chip {% if lval == '' %}none-chip{% endif %} {% if limiter_val == lval %}active{% endif %}"
+                   onclick="selectLimiter(this,'{{ field }}','{{ lval }}');">{{ llabel }}</div>
+              {% endfor %}
+            </div>
+          </div>
+
+          <input type="hidden" name="{{ field }}" id="input-{{ field }}" value="{{ grade_val }}">
+          <input type="hidden" name="{{ field }}_limiter" id="limiter-{{ field }}" value="{{ limiter_val }}">
+        </div>
+        {% endfor %}
+
+        <div class="mt-3">
+          <label class="form-label fw-semibold small mb-2">MMT notes</label>
+          <textarea name="mmt_notes" class="form-textarea" rows="2"
+            placeholder="e.g. Quadriceps 3/5 with pain on resisted extension. Patient guarding.">{{ case.physical.mmt_notes if case.physical else '' }}</textarea>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="save-bar">
+      <a href="/cases/{{ case.id }}/physical" class="btn btn-outline-secondary">Cancel</a>
+      <button type="submit" class="btn btn-primary">Save muscle strength</button>
+    </div>
+
+  </form>
+</div>
+
+<script>
+(function() {
+  "use strict";
+
+  const MUSCLES = [
+    'mmt_quadriceps', 'mmt_hamstrings', 'mmt_hip_flexors',
+    'mmt_hip_abductors', 'mmt_hip_external_rotators', 'mmt_gastroc_soleus'
+  ];
+  const MUSCLE_NAMES = {
+    'mmt_quadriceps': 'quadriceps',
+    'mmt_hamstrings': 'hamstrings',
+    'mmt_hip_flexors': 'hip flexors',
+    'mmt_hip_abductors': 'hip abductors',
+    'mmt_hip_external_rotators': 'hip external rotators',
+    'mmt_gastroc_soleus': 'gastroc/soleus'
+  };
+
+  // must match suppressing_limiters in backend/safety/neuro_trigger.py
+  const SUPPRESSING = ['pain', 'effusion', 'not_tested'];
+
+  window.selectGrade = function(btn, fieldName) {
+    const group = document.getElementById('grades-' + fieldName);
+    group.querySelectorAll('.grade-btn').forEach(function(b) {
+      b.classList.remove('active');
+    });
+    btn.classList.add('active');
+    document.getElementById('input-' + fieldName).value = btn.textContent.trim();
+
+    // the limiter question only makes sense once a grade exists
+    document.getElementById('limiter-row-' + fieldName).classList.add('show');
+
+    refreshBanners();
+  };
+
+  window.selectLimiter = function(el, fieldName, value) {
+    const group = document.getElementById('limiter-chips-' + fieldName);
+    group.querySelectorAll('.limiter-chip').forEach(function(c) {
+      c.classList.remove('active');
+    });
+    el.classList.add('active');
+    document.getElementById('limiter-' + fieldName).value = value;
+    refreshBanners();
+  };
+
+  // Client-side mirror of check_neuro_trigger and check_inhibition.
+  // This is display only — the server recomputes both on save and the stored
+  // result comes from there, never from this function.
+  function refreshBanners() {
+    const triggerReasons = [];
+    const inhibitedReasons = [];
+
+    MUSCLES.forEach(function(field) {
+      const gradeInput = document.getElementById('input-' + field).value;
+      if (gradeInput === '') return;
+
+      const grade = parseInt(gradeInput, 10);
+      if (isNaN(grade) || grade > 2) return;
+
+      const limiter = document.getElementById('limiter-' + field).value;
+      const label = MUSCLE_NAMES[field] + ' grade ' + grade + '/5';
+
+      if (SUPPRESSING.indexOf(limiter) !== -1) {
+        // not_tested has no finding to re-test for, so only pain and effusion
+        // count as inhibition
+        if (limiter === 'pain' || limiter === 'effusion') {
+          inhibitedReasons.push(label + ' (' + limiter + ' limited)');
+        }
+      } else {
+        triggerReasons.push(label);
+      }
+    });
+
+    const neuroBanner = document.getElementById('neuro-banner');
+    const neuroReason = document.getElementById('neuro-reason');
+    const inhibBanner = document.getElementById('inhibition-banner');
+    const inhibReason = document.getElementById('inhibition-reason');
+
+    if (triggerReasons.length > 0) {
+      neuroBanner.classList.add('show');
+      neuroReason.textContent = triggerReasons.join('; ');
+    } else {
+      neuroBanner.classList.remove('show');
+    }
+
+    // only shown when nothing else already triggered the screen
+    if (inhibitedReasons.length > 0 && triggerReasons.length === 0) {
+      inhibBanner.classList.add('show');
+      inhibReason.textContent =
+        inhibitedReasons.join('; ') +
+        ' — neuro screen not triggered. Re-test when the joint settles.';
+    } else {
+      inhibBanner.classList.remove('show');
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', refreshBanners);
+})();
+</script>
+
+{% endblock %}

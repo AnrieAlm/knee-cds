@@ -142,9 +142,15 @@ def search_corpus(query: str) -> str:
     lines = []
     for r in results:
         source = r["metadata"].get("source", "unknown")
-        # truncate each chunk to 200 chars so the context stays small
+        # relevance is carried through so the audit log can record how well
+        # each chunk actually matched — a citation backed by a 0.55 score is
+        # a different claim from one backed by 0.85
+        score = r.get("score", r.get("distance", ""))
         text = r["text"][:200]
-        lines.append(f"[{source}]: {text}")
+        if score != "":
+            lines.append(f"[{source} | relevance {score}]: {text}")
+        else:
+            lines.append(f"[{source}]: {text}")
     return "\n---\n".join(lines)
 
 
@@ -307,7 +313,55 @@ def _extract_final_text(response):
         return last.get("content", "(no content)")
     return getattr(last, "content", "(no content)")
 
+def _extract_retrieved(response):
+    """Pull the retrieval chain out of a create_agent response.
 
+    This is the audit trail. The ReAct loop calls search_corpus internally,
+    so without capturing the tool messages here there is no independent
+    record of what the model was actually shown — only the citations it
+    chose to write into its prose, which cannot be verified against
+    anything. Every log entry written before this existed has an empty
+    retrieved list for that reason.
+
+    Returns a list of {query, result} dicts, one per tool call, in the
+    order the agent made them.
+    """
+    messages = response.get("messages", [])
+    retrieved = []
+    pending_query = None
+
+    for msg in messages:
+        # tool CALL — carries the query the agent chose
+        tool_calls = None
+        if isinstance(msg, dict):
+            tool_calls = msg.get("tool_calls")
+        else:
+            tool_calls = getattr(msg, "tool_calls", None)
+
+        if tool_calls:
+            for call in tool_calls:
+                if isinstance(call, dict):
+                    args = call.get("args", {})
+                else:
+                    args = getattr(call, "args", {})
+                pending_query = args.get("query", "") if isinstance(args, dict) else ""
+
+        # tool RESULT — carries what came back
+        msg_type = None
+        if isinstance(msg, dict):
+            msg_type = msg.get("type") or msg.get("role")
+        else:
+            msg_type = getattr(msg, "type", None)
+
+        if msg_type == "tool":
+            content = msg.get("content", "") if isinstance(msg, dict) else getattr(msg, "content", "")
+            retrieved.append({
+                "query": pending_query or "(query not captured)",
+                "result": content,
+            })
+            pending_query = None
+
+    return retrieved
 # ===========================================================
 # Quick manual test
 # ===========================================================
@@ -323,11 +377,7 @@ def run_agent_only(query, safety_facts, physical_dict=None):
         system_prompt=AGENT_SYSTEM_PROMPT,
     )
 
-    agent = create_agent(
-        model=llm,
-        tools=[search_corpus],
-        system_prompt=AGENT_SYSTEM_PROMPT,
-    )
+    
 
     # addition 3
     # physical findings are recorded observations, not rule outputs, so they go in their own
@@ -350,12 +400,13 @@ def run_agent_only(query, safety_facts, physical_dict=None):
     ) # recursion_limit=10 allows several retrieval steps before answering
 
     suggestion = _extract_final_text(response)
+    retrieved = _extract_retrieved(response)
 
-    # return shape matches what main.py expects: suggestion + retrieved stub
-    # (retrieved is empty here because retrieval happens inside the agent loop)
+    print(f'[agent] {len(retrieved)} retrieval call(s) captured')
+
     return {
         "suggestion": suggestion,
-        "retrieved": [],
+        "retrieved": retrieved,
     }
 
 if __name__ == "__main__":

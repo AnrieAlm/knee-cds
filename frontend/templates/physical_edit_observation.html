@@ -1,0 +1,384 @@
+{% extends "case_workspace.html" %}
+{% block tab_content %}
+
+<style>
+  .phys-edit { max-width: 720px; margin: 0 auto; padding-bottom: 80px; }
+
+  .phys-edit .edit-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+  }
+
+  .phys-edit .edit-header a {
+    color: var(--bs-secondary, #6c757d);
+    text-decoration: none;
+    font-size: 1.1rem;
+    padding: 0.25rem;
+  }
+
+  .phys-edit .edit-header h2 {
+    font-size: 1.15rem;
+    font-weight: 600;
+    margin: 0;
+    flex: 1;
+  }
+
+  /* Section card */
+  .edit-section {
+    border: 1px solid var(--bs-border-color, #dee2e6);
+    border-radius: 0.75rem;
+    background: var(--bs-body-bg, #fff);
+    margin-bottom: 1rem;
+    overflow: hidden;
+  }
+
+  .edit-section .sec-head {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.875rem 1rem;
+    font-weight: 600;
+    font-size: 0.9rem;
+    border-bottom: 1px solid var(--bs-border-color-translucent, rgba(0,0,0,0.06));
+    background: var(--bs-tertiary-bg, #f8f9fa);
+  }
+
+  .edit-section .sec-body {
+    padding: 1rem;
+  }
+
+  /* Toggle row */
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.625rem 0;
+    border-bottom: 1px solid var(--bs-border-color-translucent, rgba(0,0,0,0.06));
+    min-height: 52px;
+  }
+
+  .toggle-row:last-child { border-bottom: none; }
+
+  .toggle-row .label {
+    font-size: 0.9rem;
+    font-weight: 500;
+  }
+
+  .toggle-row .hint {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--bs-secondary, #6c757d);
+    font-weight: 400;
+    margin-top: 0.1rem;
+  }
+
+  /* Custom toggle switch (Bootstrap independent) */
+  .switch {
+    position: relative;
+    width: 48px;
+    height: 28px;
+    background: var(--bs-secondary-bg, #e9ecef);
+    border-radius: 14px;
+    cursor: pointer;
+    transition: background 0.2s ease;
+    border: 1px solid var(--bs-border-color, #dee2e6);
+    flex-shrink: 0;
+  }
+
+  .switch.on {
+    background: var(--bs-primary, #0d6efd);
+    border-color: var(--bs-primary, #0d6efd);
+  }
+
+  .switch::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 22px;
+    height: 22px;
+    background: #fff;
+    border-radius: 50%;
+    transition: transform 0.2s ease;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+  }
+
+  .switch.on::after { transform: translateX(20px); }
+
+  /* Chips */
+  .chip-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-top: 0.5rem;
+  }
+
+  .chip {
+    padding: 0.5rem 0.875rem;
+    border-radius: 0.5rem;
+    border: 1px solid var(--bs-border-color, #dee2e6);
+    font-size: 0.85rem;
+    cursor: pointer;
+    background: transparent;
+    color: var(--bs-secondary, #6c757d);
+    transition: all 0.12s ease;
+    user-select: none;
+    min-height: 40px;
+    display: flex;
+    align-items: center;
+  }
+
+  .chip:hover { background: var(--bs-tertiary-bg, #f8f9fa); }
+
+  .chip.active {
+    background: var(--bs-primary, #0d6efd);
+    color: #fff;
+    border-color: var(--bs-primary, #0d6efd);
+  }
+
+  .chip.active.alert {
+    background: var(--bs-danger, #dc3545);
+    border-color: var(--bs-danger, #dc3545);
+  }
+
+  .chip.active.warn {
+    background: var(--bs-warning, #ffc107);
+    color: #000;
+    border-color: var(--bs-warning, #ffc107);
+  }
+
+  /* Sticky save bar */
+  .save-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 0.75rem 1rem;
+    background: var(--bs-body-bg, #fff);
+    border-top: 1px solid var(--bs-border-color, #dee2e6);
+    display: flex;
+    gap: 0.5rem;
+    z-index: 1030;
+    box-shadow: 0 -2px 10px rgba(0,0,0,0.04);
+  }
+
+  .save-bar .btn {
+    flex: 1;
+    min-height: 48px;
+    font-weight: 500;
+  }
+
+  /* Mobile */
+  @media (max-width: 576px) {
+    .phys-edit { padding: 0 0.5rem 80px; }
+    .edit-section { border-radius: 0.625rem; margin-bottom: 0.625rem; }
+    .edit-section .sec-body { padding: 0.75rem; }
+    .chip { padding: 0.6rem 1rem; font-size: 0.9rem; min-height: 44px; }
+    .switch { width: 52px; height: 32px; }
+    .switch::after { width: 26px; height: 26px; }
+    .switch.on::after { transform: translateX(18px); }
+  }
+</style>
+
+<div class="phys-edit">
+
+  <div class="edit-header">
+    <a href="/cases/{{ case.id }}/physical"><i class="bi bi-arrow-left"></i></a>
+    <h2>Observation & Palpation</h2>
+    <span class="text-muted small">{{ case.patient_label or 'Patient' }}</span>
+  </div>
+
+  <form id="obs-form" action="/cases/{{ case.id }}/physical/edit/observation" method="post">
+
+    <!-- ── OBSERVATION ────────────────────────────────────────── -->
+    <div class="edit-section">
+      <div class="sec-head"><i class="bi bi-eye me-1"></i> Observation</div>
+      <div class="sec-body">
+
+        <!-- Gait -->
+        <div class="mb-3">
+          <label class="form-label fw-semibold small mb-2">Gait pattern</label>
+          <div class="chip-group" id="gait-group">
+            {% for val, label, alert in [
+              ('normal','Normal',false),
+              ('antalgic','Antalgic',true),
+              ('assistive_device','Assistive device',true)
+            ] %}
+            <div class="chip {% if alert %}alert{% endif %} {% if case.physical and case.physical.gait == val %}active{% endif %}"
+                 onclick="selectChip(this,'gait-group'); document.getElementById('gait-input').value='{{ val }}';">
+              {{ label }}
+            </div>
+            {% endfor %}
+          </div>
+          <input type="hidden" name="gait" id="gait-input" value="{{ case.physical.gait if case.physical else '' }}">
+        </div>
+
+        <!-- Swelling -->
+        <div class="mb-3">
+          <label class="form-label fw-semibold small mb-2">Visible swelling</label>
+          <div class="chip-group" id="swelling-group">
+            {% for val, label in [('none','None'),('mild','Mild'),('moderate','Moderate'),('severe','Severe')] %}
+            <div class="chip {% if case.physical and case.physical.visible_swelling == val %}active{% endif %}"
+                 onclick="selectChip(this,'swelling-group'); document.getElementById('swelling-input').value='{{ val }}';">
+              {{ label }}
+            </div>
+            {% endfor %}
+          </div>
+          <input type="hidden" name="visible_swelling" id="swelling-input" value="{{ case.physical.visible_swelling if case.physical else '' }}">
+        </div>
+
+        <!-- Toggles -->
+        <div class="toggle-row">
+          <div>
+            <div class="label">Bruising / ecchymosis</div>
+          </div>
+          <div class="switch {% if case.physical and case.physical.bruising == 'yes' %}on{% endif %}"
+               id="sw-bruising" onclick="toggleSwitch(this); syncToggle(this,'bruising-input');"></div>
+          <input type="hidden" name="bruising" id="bruising-input" value="{{ case.physical.bruising if case.physical else 'no' }}">
+        </div>
+
+        <div class="toggle-row">
+          <div>
+            <div class="label">Muscle wasting visible</div>
+          </div>
+          <div class="switch {% if case.physical and case.physical.muscle_wasting == 'yes' %}on{% endif %}"
+               id="sw-wasting" onclick="toggleSwitch(this); syncToggle(this,'wasting-input');"></div>
+          <input type="hidden" name="muscle_wasting" id="wasting-input" value="{{ case.physical.muscle_wasting if case.physical else 'no' }}">
+        </div>
+
+        <div class="toggle-row">
+          <div>
+            <div class="label">Altered sensation</div>
+            <span class="hint">Numbness, tingling, pins & needles</span>
+          </div>
+          <div class="switch {% if case.physical and case.physical.altered_sensation_reported == 'yes' %}on{% endif %}"
+               id="sw-sensation" onclick="toggleSwitch(this); syncToggle(this,'sensation-input');"></div>
+          <input type="hidden" name="altered_sensation_reported" id="sensation-input" value="{{ case.physical.altered_sensation_reported if case.physical else 'no' }}">
+        </div>
+
+        <div class="mb-2 mt-3">
+          <label class="form-label fw-semibold small mb-1">Alignment / posture notes</label>
+          <textarea name="alignment_notes" class="form-control form-control-sm" rows="2"
+            placeholder="E.g. valgus alignment, patella alta, leg length discrepancy">{{ case.physical.alignment_notes if case.physical else '' }}</textarea>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ── PALPATION ──────────────────────────────────────────── -->
+    <div class="edit-section">
+      <div class="sec-head"><i class="bi bi-hand-index me-1"></i> Palpation</div>
+      <div class="sec-body">
+
+        <!-- Temperature -->
+        <div class="mb-3">
+          <label class="form-label fw-semibold small mb-2">Joint temperature</label>
+          <div class="chip-group" id="temp-group">
+            {% for val, label in [('normal','Normal'),('warm','Warm'),('hot','Hot')] %}
+            <div class="chip {% if case.physical and case.physical.joint_temperature == val %}active{% endif %}"
+                 onclick="selectChip(this,'temp-group'); document.getElementById('temp-input').value='{{ val }}';">
+              {{ label }}
+            </div>
+            {% endfor %}
+          </div>
+          <input type="hidden" name="joint_temperature" id="temp-input" value="{{ case.physical.joint_temperature if case.physical else '' }}">
+        </div>
+
+        <!-- Effusion -->
+        <div class="mb-3">
+          <label class="form-label fw-semibold small mb-2">Effusion</label>
+          <div class="chip-group" id="effusion-group">
+            {% for val, label in [('none','None'),('mild','Mild'),('moderate','Moderate'),('severe','Severe')] %}
+            <div class="chip {% if case.physical and case.physical.effusion == val %}active{% endif %}"
+                 onclick="selectChip(this,'effusion-group'); document.getElementById('effusion-input').value='{{ val }}';">
+              {{ label }}
+            </div>
+            {% endfor %}
+          </div>
+          <input type="hidden" name="effusion" id="effusion-input" value="{{ case.physical.effusion if case.physical else '' }}">
+        </div>
+
+        <!-- Effusion type -->
+        <div class="mb-3">
+          <label class="form-label fw-semibold small mb-2">Effusion type</label>
+          <div class="chip-group" id="efftype-group">
+            {% for val, label in [('unknown','Unknown'),('capsular','Capsular'),('extracapsular','Extracapsular')] %}
+            <div class="chip {% if case.physical and case.physical.effusion_type == val %}active{% endif %}"
+                 onclick="selectChip(this,'efftype-group'); document.getElementById('efftype-input').value='{{ val }}';">
+              {{ label }}
+            </div>
+            {% endfor %}
+          </div>
+          <input type="hidden" name="effusion_type" id="efftype-input" value="{{ case.physical.effusion_type if case.physical else '' }}">
+        </div>
+
+        <!-- Joint line tenderness -->
+        <div class="mb-3">
+          <label class="form-label fw-semibold small mb-2">Joint line tenderness</label>
+          <div class="chip-group" id="jlt-group">
+            {% for val, label in [('none','None'),('medial','Medial'),('lateral','Lateral'),('both','Both')] %}
+            <div class="chip {% if case.physical and case.physical.joint_line_tenderness == val %}active{% endif %}"
+                 onclick="selectChip(this,'jlt-group'); document.getElementById('jlt-input').value='{{ val }}';">
+              {{ label }}
+            </div>
+            {% endfor %}
+          </div>
+          <input type="hidden" name="joint_line_tenderness" id="jlt-input" value="{{ case.physical.joint_line_tenderness if case.physical else '' }}">
+        </div>
+
+        <!-- Bony palpation -->
+        <div class="row g-2 mb-2">
+          {% for field, label in [
+            ('popliteal_tenderness','Popliteal tenderness'),
+            ('patellar_tenderness','Patellar tenderness'),
+            ('fibular_head_tenderness','Fibular head tenderness'),
+            ('tibial_tubercle_tenderness','Tibial tubercle tenderness')
+          ] %}
+          <div class="col-6">
+            <label class="form-label small fw-semibold mb-1">{{ label }}</label>
+            <select name="{{ field }}" class="form-select form-select-sm">
+              {% for val, lab in [('not_assessed','Not assessed'),('no','No'),('yes','Yes')] %}
+              <option value="{{ val }}" {% if case.physical and case.physical.get(field) == val %}selected{% endif %}>{{ lab }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          {% endfor %}
+        </div>
+
+        <div class="mb-2">
+          <label class="form-label small fw-semibold mb-1">Collateral ligament line</label>
+          <select name="collateral_tenderness" class="form-select form-select-sm">
+            {% for val, lab in [('not_assessed','Not assessed'),('none','None'),('mcl','MCL'),('lcl','LCL'),('both','Both')] %}
+            <option value="{{ val }}" {% if case.physical and case.physical.collateral_tenderness == val %}selected{% endif %}>{{ lab }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Sticky save -->
+    <div class="save-bar">
+      <a href="/cases/{{ case.id }}/physical" class="btn btn-outline-secondary">Cancel</a>
+      <button type="submit" class="btn btn-primary">Save observation & palpation</button>
+    </div>
+
+  </form>
+</div>
+
+<script>
+  function selectChip(el, groupId) {
+    document.getElementById(groupId).querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+    el.classList.add('active');
+  }
+  function toggleSwitch(el) {
+    el.classList.toggle('on');
+  }
+  function syncToggle(sw, inputId) {
+    document.getElementById(inputId).value = sw.classList.contains('on') ? 'yes' : 'no';
+  }
+</script>
+
+{% endblock %}

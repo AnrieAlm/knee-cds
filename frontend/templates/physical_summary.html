@@ -1,0 +1,484 @@
+{% extends "case_workspace.html" %}
+{% block tab_content %}
+
+<style>
+  /* ── Summary dashboard styles ─────────────────────────────── */
+  .phys-summary { max-width: 800px; margin: 0 auto; }
+
+  .phys-summary .page-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .phys-summary .page-header h2 {
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin: 0;
+  }
+
+  .phys-summary .status-pill {
+    font-size: 0.75rem;
+    font-weight: 500;
+    padding: 0.25rem 0.75rem;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+
+  .phys-summary .status-pill.complete {
+    background: var(--bs-success-bg-subtle, #d1e7dd);
+    color: var(--bs-success-text, #0f5132);
+  }
+
+  .phys-summary .status-pill.partial {
+    background: var(--bs-warning-bg-subtle, #fff3cd);
+    color: var(--bs-warning-text, #664d03);
+  }
+
+  .phys-summary .status-pill.empty {
+    background: var(--bs-secondary-bg-subtle, #e9ecef);
+    color: var(--bs-secondary-text, #41464b);
+  }
+
+  /* Cards */
+  .phys-card {
+    display: block;
+    text-decoration: none;
+    color: inherit;
+    border: 1px solid var(--bs-border-color, #dee2e6);
+    border-radius: 0.75rem;
+    background: var(--bs-body-bg, #fff);
+    margin-bottom: 0.75rem;
+    transition: transform 0.12s ease, box-shadow 0.12s ease;
+    overflow: hidden;
+  }
+
+  .phys-card:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+    border-color: var(--bs-primary, #0d6efd);
+  }
+
+  .phys-card:active {
+    transform: scale(0.995);
+  }
+
+  .phys-card .card-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.875rem 1rem 0.5rem;
+  }
+
+  .phys-card .card-title {
+    font-weight: 600;
+    font-size: 0.95rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .phys-card .card-title i {
+    font-size: 1.1rem;
+    opacity: 0.7;
+  }
+
+  .phys-card .card-count {
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 0.15rem 0.5rem;
+    border-radius: 999px;
+    background: var(--bs-tertiary-bg, #f8f9fa);
+    color: var(--bs-secondary, #6c757d);
+  }
+
+  .phys-card .card-body {
+    padding: 0.5rem 1rem 0.75rem;
+    min-height: 48px;
+  }
+
+  .phys-card .tag-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+  }
+
+  .phys-card .tag {
+    font-size: 0.78rem;
+    padding: 0.2rem 0.55rem;
+    border-radius: 0.375rem;
+    background: var(--bs-tertiary-bg, #f8f9fa);
+    color: var(--bs-body-color, #212529);
+    border: 1px solid var(--bs-border-color-translucent, rgba(0,0,0,0.08));
+    white-space: nowrap;
+  }
+
+  .phys-card .tag.alert {
+    background: var(--bs-danger-bg-subtle, #f8d7da);
+    color: var(--bs-danger-text, #58151c);
+    border-color: var(--bs-danger-border-subtle, #f1aeb5);
+  }
+
+  .phys-card .tag.warn {
+    background: var(--bs-warning-bg-subtle, #fff3cd);
+    color: var(--bs-warning-text, #664d03);
+    border-color: var(--bs-warning-border-subtle, #ffe69c);
+  }
+
+  .phys-card .tag.success {
+    background: var(--bs-success-bg-subtle, #d1e7dd);
+    color: var(--bs-success-text, #0f5132);
+    border-color: var(--bs-success-border-subtle, #a3cfbb);
+  }
+
+  .phys-card .tag.muted {
+    color: var(--bs-secondary, #6c757d);
+    font-style: italic;
+    background: transparent;
+    border-style: dashed;
+  }
+
+  .phys-card .card-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem 1rem;
+    border-top: 1px solid var(--bs-border-color-translucent, rgba(0,0,0,0.06));
+    font-size: 0.75rem;
+    color: var(--bs-secondary, #6c757d);
+  }
+
+  .phys-card .card-footer i {
+    font-size: 0.85rem;
+  }
+
+  /* Empty state */
+  .phys-empty {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: var(--bs-secondary, #6c757d);
+  }
+
+  .phys-empty i {
+    font-size: 2.5rem;
+    opacity: 0.3;
+    margin-bottom: 0.75rem;
+  }
+
+  /* Mobile tweaks */
+  @media (max-width: 576px) {
+    .phys-summary { padding: 0 0.5rem; }
+    .phys-card { border-radius: 0.625rem; margin-bottom: 0.625rem; }
+    .phys-card .card-top { padding: 0.75rem 0.875rem 0.375rem; }
+    .phys-card .card-body { padding: 0.375rem 0.875rem 0.625rem; }
+    .phys-card .card-footer { padding: 0.375rem 0.875rem; }
+    .phys-card .tag { font-size: 0.75rem; padding: 0.2rem 0.45rem; }
+  }
+
+  .phys-continue {
+    margin-top: 1.25rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--bs-border-color, #dee2e6);
+  }
+  .phys-continue .btn {
+    min-height: 48px;
+    font-weight: 500;
+  }
+  .phys-continue .continue-hint {
+    font-size: 0.75rem;
+    color: var(--bs-secondary, #6c757d);
+    text-align: center;
+    margin-top: 0.5rem;
+  }
+</style>
+
+<div class="phys-summary">
+
+  <!-- Header -->
+  <div class="page-header">
+    <h2><i class="bi bi-activity me-2"></i>Physical Examination</h2>
+    {% set total_fields = 42 %}
+    {% set filled = namespace(count=0) %}
+    {% if case.physical %}
+      {% for k in ['gait','visible_swelling','effusion','bruising','muscle_wasting','joint_temperature','joint_line_tenderness','rom_flexion_involved','rom_flexion_uninvolved','end_feel_flexion','pain_on_movement','pain_resistance_sequence','extension_lag','flexibility_hamstrings','flexibility_gastroc_soleus','mmt_quadriceps','mmt_hamstrings','mmt_hip_flexors','mmt_hip_abductors','mmt_hip_external_rotators','mmt_gastroc_soleus','test_lachman','test_anterior_drawer','test_pivot_shift','test_posterior_drawer','test_valgus_0','test_valgus_30','test_varus_0','test_varus_30','test_mcmurray','test_thessaly','test_apley_compression','test_apley_distraction','test_patellar_apprehension','sensation_l3','sensation_l4','sensation_l5','sensation_s1','reflex_patella','reflex_achilles','peroneal_dorsiflexion','balance_single_leg'] %}
+        {% if case.physical.get(k) and case.physical.get(k) not in ['', 'not_assessed', 'not_done', None] %}{% set filled.count = filled.count + 1 %}{% endif %}
+      {% endfor %}
+    {% endif %}
+    {% if filled.count == 0 %}
+      <span class="status-pill empty"><i class="bi bi-circle"></i> Not started</span>
+    {% elif filled.count >= total_fields * 0.8 %}
+      <span class="status-pill complete"><i class="bi bi-check-circle-fill"></i> {{ filled.count }}/{{ total_fields }}</span>
+    {% else %}
+      <span class="status-pill partial"><i class="bi bi-circle-half"></i> {{ filled.count }}/{{ total_fields }}</span>
+    {% endif %}
+  </div>
+
+  {% if not case.physical %}
+    <div class="phys-empty">
+      <i class="bi bi-clipboard2-pulse"></i>
+      <p class="mb-2">No physical examination recorded yet.</p>
+      <a href="/cases/{{ case.id }}/physical/edit/observation" class="btn btn-primary btn-sm">
+        <i class="bi bi-plus-lg me-1"></i>Start examination
+      </a>
+    </div>
+  {% else %}
+
+    <!-- ── Card 1: Observation & Palpation ────────────────────── -->
+    <a href="/cases/{{ case.id }}/physical/edit/observation" class="phys-card">
+      <div class="card-top">
+        <div class="card-title"><i class="bi bi-eye"></i> Observation & Palpation</div>
+        {% set obs_fields = ['gait','visible_swelling','effusion','bruising','muscle_wasting','altered_sensation_reported','joint_temperature','joint_line_tenderness','popliteal_tenderness','patellar_tenderness','fibular_head_tenderness','tibial_tubercle_tenderness','collateral_tenderness'] %}
+        {% set obs_filled = namespace(c=0) %}
+        {% for f in obs_fields %}{% if case.physical.get(f) and case.physical.get(f) not in ['', 'not_assessed', None] %}{% set obs_filled.c = obs_filled.c + 1 %}{% endif %}{% endfor %}
+        <span class="card-count">{{ obs_filled.c }}/{{ obs_fields|length }}</span>
+      </div>
+      <div class="card-body">
+        <div class="tag-list">
+          {% if case.physical.gait and case.physical.gait != 'not_assessed' %}
+            <span class="tag {% if case.physical.gait != 'normal' %}warn{% endif %}">{{ case.physical.gait | replace('_', ' ') | title }}</span>
+          {% endif %}
+          {% if case.physical.visible_swelling and case.physical.visible_swelling != 'none' %}
+            <span class="tag alert">{{ case.physical.visible_swelling }} swelling</span>
+          {% endif %}
+          {% if case.physical.effusion and case.physical.effusion != 'none' %}
+            <span class="tag alert">{{ case.physical.effusion }} effusion</span>
+          {% endif %}
+          {% if case.physical.joint_temperature and case.physical.joint_temperature != 'normal' %}
+            <span class="tag warn">{{ case.physical.joint_temperature }}</span>
+          {% endif %}
+          {% if case.physical.joint_line_tenderness and case.physical.joint_line_tenderness != 'none' %}
+            <span class="tag alert">{{ case.physical.joint_line_tenderness | title }} JLT</span>
+          {% endif %}
+          {% if case.physical.popliteal_tenderness == 'yes' %}
+            <span class="tag alert">Popliteal tender</span>
+          {% endif %}
+          {% if case.physical.altered_sensation_reported == 'yes' %}
+            <span class="tag alert">Altered sensation</span>
+          {% endif %}
+          {% if obs_filled.c == 0 %}
+            <span class="tag muted">Not recorded</span>
+          {% endif %}
+        </div>
+      </div>
+      <div class="card-footer">
+        <span>Tap to edit observation & palpation</span>
+        <i class="bi bi-chevron-right"></i>
+      </div>
+    </a>
+
+    <!-- ── Card 2: Range of Motion ────────────────────────────── -->
+    <a href="/cases/{{ case.id }}/physical/edit/rom" class="phys-card">
+      <div class="card-top">
+        <div class="card-title"><i class="bi bi-arrows-angle-expand"></i> Range of Motion</div>
+        {% set rom_fields = ['rom_flexion_involved','rom_extension_involved','rom_flexion_uninvolved','rom_extension_uninvolved','end_feel_flexion','end_feel_extension','pain_on_movement','pain_resistance_sequence','extension_lag','able_to_flex_90'] %}
+        {% set rom_filled = namespace(c=0) %}
+        {% for f in rom_fields %}{% if case.physical.get(f) and case.physical.get(f) not in ['', 'not_assessed', None] %}{% set rom_filled.c = rom_filled.c + 1 %}{% endif %}{% endfor %}
+        <span class="card-count">{{ rom_filled.c }}/{{ rom_fields|length }}</span>
+      </div>
+      <div class="card-body">
+        <div class="tag-list">
+          {% if case.physical.rom_flexion_involved is not none %}
+            {% set deficit = (case.physical.rom_flexion_uninvolved|int(default=135)) - (case.physical.rom_flexion_involved|int(default=0)) %}
+            <span class="tag {% if deficit > 15 %}alert{% elif deficit > 5 %}warn{% else %}success{% endif %}">
+              Flexion {{ case.physical.rom_flexion_involved }}°
+              {% if deficit > 0 %}({{ deficit }}° deficit){% endif %}
+            </span>
+          {% endif %}
+          {% if case.physical.rom_extension_involved is not none %}
+            <span class="tag">Ext {{ case.physical.rom_extension_involved }}°</span>
+          {% endif %}
+          {% if case.physical.extension_lag == 'yes' %}
+            <span class="tag alert">Extension lag</span>
+          {% endif %}
+          {% if case.physical.end_feel_flexion and case.physical.end_feel_flexion != 'not_assessed' %}
+            <span class="tag {% if case.physical.end_feel_flexion != 'tissue_approximation' %}warn{% endif %}">
+              End-feel: {{ case.physical.end_feel_flexion | replace('_', ' ') }}
+            </span>
+          {% endif %}
+          
+          {% if case.physical.pain_on_movement and case.physical.pain_on_movement != 'none' %}
+            <span class="tag alert">Pain: {{ case.physical.pain_on_movement }}</span>
+          {% endif %}
+          {% for f, lbl in [('rotation_medial','Medial rot'),('rotation_lateral','Lateral rot')] %}
+            {% if case.physical.get(f) and case.physical.get(f) not in ['not_assessed','normal'] %}
+              <span class="tag alert">{{ lbl }}: {{ case.physical.get(f) }}</span>
+            {% endif %}
+          {% endfor %}
+          {% if rom_filled.c == 0 %}
+            <span class="tag muted">Not recorded</span>
+          {% endif %}
+
+
+        </div>
+      </div>
+      <div class="card-footer">
+        <span>Tap to edit ROM</span>
+        <i class="bi bi-chevron-right"></i>
+      </div>
+    </a>
+
+    <!-- ── Card 3: Flexibility ────────────────────────────────── -->
+    <a href="/cases/{{ case.id }}/physical/edit/rom#flexibility" class="phys-card">
+      <div class="card-top">
+        <div class="card-title"><i class="bi bi-arrow-left-right"></i> Flexibility</div>
+        {% set flex_fields = ['flexibility_hamstrings','flexibility_gastroc_soleus'] %}
+        {% set flex_filled = namespace(c=0) %}
+        {% for f in flex_fields %}{% if case.physical.get(f) and case.physical.get(f) not in ['', 'not_assessed', None] %}{% set flex_filled.c = flex_filled.c + 1 %}{% endif %}{% endfor %}
+        <span class="card-count">{{ flex_filled.c }}/{{ flex_fields|length }}</span>
+      </div>
+      <div class="card-body">
+        <div class="tag-list">
+          {% if case.physical.flexibility_hamstrings and case.physical.flexibility_hamstrings != 'not_assessed' %}
+            <span class="tag {% if case.physical.flexibility_hamstrings != 'normal' %}warn{% endif %}">Hamstrings: {{ case.physical.flexibility_hamstrings | replace('_', ' ') }}</span>
+          {% endif %}
+          {% if case.physical.flexibility_gastroc_soleus and case.physical.flexibility_gastroc_soleus != 'not_assessed' %}
+            <span class="tag {% if case.physical.flexibility_gastroc_soleus != 'normal' %}warn{% endif %}">Gastroc/soleus: {{ case.physical.flexibility_gastroc_soleus | replace('_', ' ') }}</span>
+          {% endif %}
+          {% if flex_filled.c == 0 %}
+            <span class="tag muted">Not recorded</span>
+          {% endif %}
+        </div>
+      </div>
+      <div class="card-footer">
+        <span>Tap to edit flexibility</span>
+        <i class="bi bi-chevron-right"></i>
+      </div>
+    </a>
+
+    <!-- ── Card 4: Muscle Strength ────────────────────────────── -->
+    <a href="/cases/{{ case.id }}/physical/edit/mmt" class="phys-card">
+      <div class="card-top">
+        <div class="card-title"><i class="bi bi-person-arms-up"></i> Muscle Strength</div>
+        {% set mmt_fields = ['mmt_quadriceps','mmt_hamstrings','mmt_hip_flexors','mmt_hip_abductors','mmt_hip_external_rotators','mmt_gastroc_soleus'] %}
+        {% set mmt_filled = namespace(c=0) %}
+        {% set mmt_low = namespace(found=false) %}
+        {% for f in mmt_fields %}
+          {% if case.physical.get(f) and case.physical.get(f) not in ['', None] %}{% set mmt_filled.c = mmt_filled.c + 1 %}{% endif %}
+          {% if case.physical.get(f) and case.physical.get(f) | int <= 2 %}{% set mmt_low.found = true %}{% endif %}
+        {% endfor %}
+        <span class="card-count">{{ mmt_filled.c }}/{{ mmt_fields|length }}</span>
+      </div>
+      <div class="card-body">
+        <div class="tag-list">
+          {% for field, label in [('mmt_quadriceps','Quad'),('mmt_hamstrings','Ham'),('mmt_hip_flexors','Hip flex'),('mmt_hip_abductors','Hip abd'),('mmt_hip_external_rotators','Hip ER'),('mmt_gastroc_soleus','Gastroc')] %}
+            {% if case.physical.get(field) %}
+              {% set grade = case.physical.get(field) | int %}
+              <span class="tag {% if grade <= 2 %}alert{% elif grade == 3 %}warn{% else %}success{% endif %}">
+                {{ label }} {{ grade }}/5
+              </span>
+            {% endif %}
+          {% endfor %}
+          {% if mmt_low.found %}
+            <span class="tag alert"><i class="bi bi-exclamation-triangle-fill me-1"></i>Neuro trigger</span>
+          {% endif %}
+          {% if mmt_filled.c == 0 %}
+            <span class="tag muted">Not recorded</span>
+          {% endif %}
+        </div>
+      </div>
+      <div class="card-footer">
+        <span>Tap to edit MMT</span>
+        <i class="bi bi-chevron-right"></i>
+      </div>
+    </a>
+
+    <!-- ── Card 5: Special Tests ──────────────────────────────── -->
+    <a href="/cases/{{ case.id }}/physical/edit/special" class="phys-card">
+      <div class="card-top">
+        <div class="card-title"><i class="bi bi-clipboard2-pulse"></i> Special Tests</div>
+        {% set sp_fields = ['test_lachman','test_anterior_drawer','test_pivot_shift','test_posterior_drawer','test_sag_sign','test_valgus_0','test_valgus_30','test_varus_0','test_varus_30','test_mcmurray','test_thessaly','test_apley_compression','test_apley_distraction','test_patellar_apprehension'] %}
+        {% set sp_filled = namespace(c=0) %}
+        {% set sp_pos = namespace(c=0) %}
+        {% for f in sp_fields %}
+          {% if case.physical.get(f) and case.physical.get(f) != 'not_done' %}{% set sp_filled.c = sp_filled.c + 1 %}{% endif %}
+          {% if case.physical.get(f) == 'positive' %}{% set sp_pos.c = sp_pos.c + 1 %}{% endif %}
+        {% endfor %}
+        <span class="card-count">{{ sp_filled.c }}/{{ sp_fields|length }}</span>
+      </div>
+      <div class="card-body">
+        <div class="tag-list">
+          {% if sp_pos.c > 0 %}
+            <span class="tag alert"><i class="bi bi-plus-circle-fill me-1"></i>{{ sp_pos.c }} positive</span>
+          {% endif %}
+          {% if sp_filled.c > 0 and sp_pos.c == 0 %}
+            <span class="tag success">All negative</span>
+          {% endif %}
+          {% for field, label in [('test_lachman','Lachman'),('test_pivot_shift','Pivot shift'),('test_posterior_drawer','Post drawer'),('test_mcmurray','McMurray'),('test_patellar_apprehension','Patellar app')] %}
+            {% if case.physical.get(field) == 'positive' %}
+              <span class="tag alert">{{ label }} +</span>
+            {% endif %}
+          {% endfor %}
+          {% if sp_filled.c == 0 %}
+            <span class="tag muted">Not recorded</span>
+          {% endif %}
+        </div>
+      </div>
+      <div class="card-footer">
+        <span>Tap to edit special tests</span>
+        <i class="bi bi-chevron-right"></i>
+      </div>
+    </a>
+
+    <!-- ── Card 6: Neurological Screen ────────────────────────── -->
+    <a href="/cases/{{ case.id }}/physical/edit/neuro" class="phys-card">
+      <div class="card-top">
+        <div class="card-title"><i class="bi bi-lightning-charge"></i> Neurological Screen</div>
+        {% set neuro_fields = ['sensation_l3','sensation_l4','sensation_l5','sensation_s1','reflex_patella','reflex_achilles','peroneal_dorsiflexion','balance_single_leg'] %}
+        {% set neuro_filled = namespace(c=0) %}
+        {% set neuro_abn = namespace(c=0) %}
+        {% for f in neuro_fields %}
+          {% if case.physical.get(f) and case.physical.get(f) not in ['', 'not_suspected', None] %}{% set neuro_filled.c = neuro_filled.c + 1 %}{% endif %}
+          {% if case.physical.get(f) in ['reduced','absent','weak','unable','suspected'] %}{% set neuro_abn.c = neuro_abn.c + 1 %}{% endif %}
+        {% endfor %}
+        <span class="card-count">{{ neuro_filled.c }}/{{ neuro_fields|length }}</span>
+      </div>
+      <div class="card-body">
+        <div class="tag-list">
+          {% if case.physical.neuro_triggered == 'yes' %}
+            <span class="tag alert"><i class="bi bi-exclamation-triangle-fill me-1"></i>Triggered</span>
+          {% else %}
+            <span class="tag success">Not indicated</span>
+          {% endif %}
+          {% if neuro_abn.c > 0 %}
+            <span class="tag alert">{{ neuro_abn.c }} abnormal</span>
+          {% endif %}
+          {% if case.physical.peroneal_dorsiflexion and case.physical.peroneal_dorsiflexion != 'normal' %}
+            <span class="tag alert">Peroneal {{ case.physical.peroneal_dorsiflexion }}</span>
+          {% endif %}
+          {% if neuro_filled.c == 0 and case.physical.neuro_triggered != 'yes' %}
+            <span class="tag muted">Not recorded</span>
+          {% endif %}
+        </div>
+      </div>
+      <div class="card-footer">
+        <span>Tap to edit neuro screen</span>
+        <i class="bi bi-chevron-right"></i>
+      </div>
+    </a>
+
+  <!-- ── Continue to summary ────────────────────────────────── -->
+    <div class="phys-continue">
+      <a href="/cases/{{ case.id }}/summary" class="btn btn-primary w-100">
+        Continue to summary
+        <i class="bi bi-arrow-right ms-1"></i>
+      </a>
+      <div class="continue-hint">
+        {% if filled.count < total_fields * 0.4 %}
+          You can continue with a partial examination — the agent works with
+          whatever has been recorded.
+        {% else %}
+          Generates test suggestions from the findings recorded above.
+        {% endif %}
+      </div>
+    </div>
+
+  {% endif %}
+
+</div>
+
+{% endblock %}

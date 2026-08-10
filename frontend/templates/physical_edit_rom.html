@@ -1,0 +1,709 @@
+{% extends "case_workspace.html" %}
+{% block tab_content %}
+
+{# Single guarded accessor — avoids the ~12 `case.physical.x if case.physical`
+   patterns that silently render "" when the key is absent. #}
+{% set p = case.physical or {} %}
+
+<style>
+  .phys-edit { max-width: 720px; margin: 0 auto; padding-bottom: 100px; }
+
+  .phys-edit .edit-header {
+    display: flex; align-items: center; gap: 0.75rem;
+    margin-bottom: 1rem;
+  }
+  .phys-edit .edit-header a {
+    color: var(--bs-secondary, #6c757d);
+    text-decoration: none; font-size: 1.1rem; padding: 0.25rem;
+  }
+  .phys-edit .edit-header h2 {
+    font-size: 1.15rem; font-weight: 600; margin: 0; flex: 1;
+  }
+
+  .edit-section {
+    border: 1px solid var(--bs-border-color, #dee2e6);
+    border-radius: 0.75rem;
+    background: var(--bs-body-bg, #fff);
+    margin-bottom: 1rem;
+    overflow: hidden;
+  }
+  .edit-section .sec-head {
+    display: flex; align-items: center; gap: 0.5rem;
+    padding: 0.875rem 1rem;
+    font-weight: 600; font-size: 0.9rem;
+    border-bottom: 1px solid var(--bs-border-color-translucent, rgba(0,0,0,0.06));
+    background: var(--bs-tertiary-bg, #f8f9fa);
+  }
+  .edit-section .sec-body { padding: 1rem; }
+
+  .side-by-side {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+  }
+  .side-label {
+    font-size: 0.85rem; font-weight: 600;
+    color: var(--bs-secondary, #6c757d);
+    margin-bottom: 0.75rem;
+    display: flex; align-items: center; gap: 0.4rem;
+  }
+  .badge-involved {
+    font-size: 0.65rem; font-weight: 600;
+    padding: 0.15rem 0.5rem; border-radius: 999px;
+    background: var(--bs-danger-bg-subtle, #f8d7da);
+    color: var(--bs-danger, #dc3545);
+  }
+  .badge-uninvolved {
+    font-size: 0.65rem; font-weight: 600;
+    padding: 0.15rem 0.5rem; border-radius: 999px;
+    background: var(--bs-success-bg-subtle, #d1e7dd);
+    color: var(--bs-success, #198754);
+  }
+
+  .rom-gauge-wrap { text-align: center; margin-bottom: 0.5rem; }
+  .rom-gauge {
+    position: relative;
+    width: 150px; height: 82px;
+    margin: 0 auto;
+  }
+  .rom-gauge svg { overflow: visible; }
+  .rom-value {
+    position: absolute;
+    bottom: 2px; left: 50%;
+    transform: translateX(-50%);
+    font-size: 30px; font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+  }
+  .rom-value .unit {
+    font-size: 14px; font-weight: 400;
+    color: var(--bs-secondary, #6c757d); margin-left: 1px;
+  }
+  .rom-label-sm {
+    font-size: 0.75rem; color: var(--bs-secondary, #6c757d);
+    margin-bottom: 0.25rem;
+  }
+  /* FIX 5: direction hint under extension gauges */
+  .rom-hint {
+    font-size: 0.68rem; color: var(--bs-secondary, #6c757d);
+    margin-top: 0.2rem; line-height: 1.3;
+  }
+  .rom-hint strong { font-weight: 600; }
+
+  .rom-controls {
+    display: flex; justify-content: center; align-items: center;
+    gap: 0.5rem; margin-top: 0.5rem;
+  }
+  .rom-btn {
+    width: 44px; height: 44px;
+    border: 1px solid var(--bs-border-color, #dee2e6);
+    border-radius: 0.5rem;
+    background: transparent;
+    color: var(--bs-body-color, #212529);
+    font-size: 18px; font-weight: 500;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.12s ease;
+    flex-shrink: 0;
+  }
+  .rom-btn:hover { background: var(--bs-tertiary-bg, #f8f9fa); }
+  .rom-btn:active { transform: scale(0.94); }
+  .rom-input {
+    width: 68px; height: 44px;
+    text-align: center;
+    border: 1px solid var(--bs-border-color, #dee2e6);
+    border-radius: 0.5rem;
+    font-size: 18px; font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    background: transparent;
+    color: var(--bs-body-color, #212529);
+  }
+
+  .deficit-box {
+    margin-top: 1rem; padding: 0.875rem;
+    border-radius: 0.5rem;
+    background: var(--bs-tertiary-bg, #f8f9fa);
+    text-align: center;
+  }
+  .deficit-box .label {
+    font-size: 0.75rem; color: var(--bs-secondary, #6c757d);
+    margin-bottom: 0.15rem;
+  }
+  .deficit-box .value {
+    font-size: 26px; font-weight: 600;
+    color: var(--bs-danger, #dc3545);
+    font-variant-numeric: tabular-nums;
+  }
+  .deficit-box .value.unmeasured { color: var(--bs-secondary, #6c757d); }
+
+  .toggle-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0.625rem 0;
+    border-bottom: 1px solid var(--bs-border-color-translucent, rgba(0,0,0,0.06));
+    min-height: 52px;
+  }
+  .toggle-row:last-child { border-bottom: none; }
+  .toggle-row .label { font-size: 0.9rem; font-weight: 500; }
+  .toggle-row .hint {
+    display: block; font-size: 0.75rem;
+    color: var(--bs-secondary, #6c757d); font-weight: 400; margin-top: 0.1rem;
+  }
+  .switch {
+    position: relative; width: 48px; height: 28px;
+    background: var(--bs-secondary-bg, #e9ecef);
+    border-radius: 14px; cursor: pointer;
+    transition: background 0.2s ease;
+    border: 1px solid var(--bs-border-color, #dee2e6);
+    flex-shrink: 0;
+  }
+  .switch.on { background: var(--bs-primary, #0d6efd); border-color: var(--bs-primary, #0d6efd); }
+  .switch::after {
+    content: ''; position: absolute; top: 2px; left: 2px;
+    width: 22px; height: 22px; background: #fff;
+    border-radius: 50%; transition: transform 0.2s ease;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+  }
+  .switch.on::after { transform: translateX(20px); }
+
+  .chip-group {
+    display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.5rem;
+  }
+  .chip {
+    padding: 0.5rem 0.875rem; border-radius: 0.5rem;
+    border: 1px solid var(--bs-border-color, #dee2e6);
+    font-size: 0.85rem; cursor: pointer;
+    background: transparent; color: var(--bs-secondary, #6c757d);
+    transition: all 0.12s ease; user-select: none;
+    min-height: 40px; display: flex; align-items: center;
+  }
+  .chip:hover { background: var(--bs-tertiary-bg, #f8f9fa); }
+  .chip.active {
+    background: var(--bs-primary, #0d6efd); color: #fff;
+    border-color: var(--bs-primary, #0d6efd);
+  }
+  .chip.active.alert {
+    background: var(--bs-danger, #dc3545);
+    border-color: var(--bs-danger, #dc3545);
+  }
+
+  .sub-label {
+    font-size: 0.8rem; font-weight: 600;
+    color: var(--bs-secondary, #6c757d);
+    margin: 1rem 0 0.5rem;
+    text-transform: uppercase; letter-spacing: 0.4px;
+  }
+
+  .save-bar {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    padding: 0.75rem 1rem;
+    background: var(--bs-body-bg, #fff);
+    border-top: 1px solid var(--bs-border-color, #dee2e6);
+    display: flex; gap: 0.5rem; z-index: 1030;
+    box-shadow: 0 -2px 10px rgba(0,0,0,0.04);
+  }
+  .save-bar .btn { flex: 1; min-height: 48px; font-weight: 500; }
+
+  @media (max-width: 576px) {
+    .phys-edit { padding: 0 0.5rem 100px; }
+    .side-by-side { grid-template-columns: 1fr; gap: 2rem; }
+    .rom-gauge { width: 170px; height: 92px; }
+    .rom-value { font-size: 34px; }
+    .rom-btn { width: 52px; height: 52px; font-size: 22px; }
+    .rom-input { width: 76px; height: 52px; font-size: 22px; }
+    .chip { padding: 0.6rem 1rem; font-size: 0.9rem; min-height: 44px; }
+    .switch { width: 52px; height: 32px; }
+    .switch::after { width: 26px; height: 26px; top: 2px; left: 2px; }
+    .switch.on::after { transform: translateX(18px); }
+  }
+  @media (max-width: 360px) {
+    .rom-gauge { width: 140px; height: 76px; }
+    .rom-value { font-size: 28px; }
+  }
+</style>
+
+<div class="phys-edit">
+
+  <div class="edit-header">
+    <a href="/cases/{{ case.id }}/physical"><i class="bi bi-arrow-left"></i></a>
+    <h2>Range of Motion &amp; Flexibility</h2>
+    <span class="text-muted small">{{ case.patient_label or 'Patient' }}</span>
+  </div>
+
+  <form id="rom-form" action="/cases/{{ case.id }}/physical/edit/rom" method="post">
+
+    <!-- ── ROM SECTION ────────────────────────────────────────── -->
+    <div class="edit-section">
+      <div class="sec-head"><i class="bi bi-arrows-angle-expand me-1"></i> Range of Motion</div>
+      <div class="sec-body">
+
+        <div class="side-by-side">
+
+          <!-- INVOLVED -->
+          <div>
+            <div class="side-label">
+              Involved side <span class="badge-involved">L</span>
+            </div>
+
+            <!-- Flexion -->
+            <div class="rom-label-sm">Flexion</div>
+            <div class="rom-gauge-wrap">
+              <div class="rom-gauge" id="gauge-flexion-involved">
+                <svg width="150" height="82" viewBox="0 0 150 82">
+                  <path d="M 12 82 A 63 63 0 0 1 138 82" fill="none"
+                    stroke="var(--bs-border-color,#dee2e6)" stroke-width="9" stroke-linecap="round"/>
+                  <path id="arc-flexion-involved" d="M 12 82 A 63 63 0 0 1 138 82" fill="none"
+                    stroke="var(--bs-primary,#0d6efd)" stroke-width="9" stroke-linecap="round"
+                    stroke-dasharray="198" stroke-dashoffset="198"
+                    style="transition:stroke-dashoffset 0.3s ease, stroke 0.3s ease"/>
+                  <text x="75" y="62" text-anchor="middle" font-size="11"
+                    fill="var(--bs-secondary,#6c757d)">0°</text>
+                  <text x="20" y="78" text-anchor="middle" font-size="10"
+                    fill="var(--bs-secondary,#6c757d)">0°</text>
+                  <text x="130" y="78" text-anchor="middle" font-size="10"
+                    fill="var(--bs-secondary,#6c757d)">150°</text>
+                </svg>
+                <div class="rom-value">
+                  <span id="val-flexion-involved">0</span><span class="unit">°</span>
+                </div>
+              </div>
+              <div class="rom-controls">
+                <button type="button" class="rom-btn" onclick="adjustRom('flexion-involved',-5)">−</button>
+                <input type="text" inputmode="numeric" pattern="[0-9]*"
+                  class="rom-input" id="input-flexion-involved" value="0"
+                  oninput="setRom('flexion-involved', this.value)">
+                <button type="button" class="rom-btn" onclick="adjustRom('flexion-involved',5)">+</button>
+              </div>
+              <div class="rom-hint">Normal full range <strong>135°</strong></div>
+              <input type="hidden" name="rom_flexion_involved" id="hidden-flexion-involved" value="0">
+            </div>
+
+            <!-- Extension -->
+            <div class="rom-label-sm" style="margin-top:1rem">Extension</div>
+            <div class="rom-gauge-wrap">
+              <div class="rom-gauge" id="gauge-extension-involved">
+                <svg width="150" height="82" viewBox="0 0 150 82">
+                  <path d="M 12 82 A 63 63 0 0 1 138 82" fill="none"
+                    stroke="var(--bs-border-color,#dee2e6)" stroke-width="9" stroke-linecap="round"/>
+                  <path id="arc-extension-involved" d="M 12 82 A 63 63 0 0 1 138 82" fill="none"
+                    stroke="var(--bs-success,#198754)" stroke-width="9" stroke-linecap="round"
+                    stroke-dasharray="198" stroke-dashoffset="198"
+                    style="transition:stroke-dashoffset 0.3s ease, stroke 0.3s ease"/>
+                  <text x="75" y="62" text-anchor="middle" font-size="11"
+                    fill="var(--bs-secondary,#6c757d)">0°</text>
+                  <text x="20" y="78" text-anchor="middle" font-size="10"
+                    fill="var(--bs-secondary,#6c757d)">−10°</text>
+                  <text x="130" y="78" text-anchor="middle" font-size="10"
+                    fill="var(--bs-secondary,#6c757d)">30°</text>
+                </svg>
+                <div class="rom-value">
+                  <span id="val-extension-involved">0</span><span class="unit">°</span>
+                </div>
+              </div>
+              <div class="rom-controls">
+                <button type="button" class="rom-btn" onclick="adjustRom('extension-involved',-2)">−</button>
+                <!-- FIX 4: inputmode="text" so the minus key exists on mobile keypads -->
+                <input type="text" inputmode="text" pattern="-?[0-9]*"
+                  class="rom-input" id="input-extension-involved" value="0"
+                  oninput="setRom('extension-involved', this.value)">
+                <button type="button" class="rom-btn" onclick="adjustRom('extension-involved',2)">+</button>
+              </div>
+              <!-- FIX 5: state the sign convention explicitly -->
+              <div class="rom-hint">
+                <strong>0°</strong> = full extension · <strong>positive</strong> = deficit
+                (knee will not straighten) · <strong>negative</strong> = hyperextension
+              </div>
+              <input type="hidden" name="rom_extension_involved" id="hidden-extension-involved" value="0">
+            </div>
+
+            <!-- Toggles -->
+            <div class="toggle-row" style="margin-top:0.75rem">
+              <div>
+                <div class="label">Extension lag</div>
+                <span class="hint">Unable to achieve full active extension</span>
+              </div>
+              <div class="switch {% if p.get('extension_lag') == 'yes' %}on{% endif %}"
+                   id="sw-lag" onclick="toggleSwitch(this); syncToggle(this,'hidden-lag');"></div>
+              <input type="hidden" name="extension_lag" id="hidden-lag"
+                value="{{ p.get('extension_lag') or 'no' }}">
+            </div>
+            <div class="toggle-row">
+              <div><div class="label">Pain on flexion</div></div>
+              <div class="switch {% if p.get('pain_on_movement') in ['flexion','both'] %}on{% endif %}"
+                   id="sw-pain-flex" onclick="toggleSwitch(this); syncPainToggle();"></div>
+            </div>
+            <div class="toggle-row">
+              <div><div class="label">Pain on extension</div></div>
+              <div class="switch {% if p.get('pain_on_movement') in ['extension','both'] %}on{% endif %}"
+                   id="sw-pain-ext" onclick="toggleSwitch(this); syncPainToggle();"></div>
+            </div>
+            <input type="hidden" name="pain_on_movement" id="hidden-pain-movement"
+              value="{{ p.get('pain_on_movement') or 'none' }}">
+
+          </div>
+
+          <!-- UNINVOLVED -->
+          <div>
+            <div class="side-label">
+              Uninvolved side <span class="badge-uninvolved">R</span>
+            </div>
+
+            <!-- Flexion -->
+            <div class="rom-label-sm">Flexion</div>
+            <div class="rom-gauge-wrap">
+              <div class="rom-gauge" id="gauge-flexion-uninvolved">
+                <svg width="150" height="82" viewBox="0 0 150 82">
+                  <path d="M 12 82 A 63 63 0 0 1 138 82" fill="none"
+                    stroke="var(--bs-border-color,#dee2e6)" stroke-width="9" stroke-linecap="round"/>
+                  <path id="arc-flexion-uninvolved" d="M 12 82 A 63 63 0 0 1 138 82" fill="none"
+                    stroke="var(--bs-success,#198754)" stroke-width="9" stroke-linecap="round"
+                    stroke-dasharray="198" stroke-dashoffset="0"
+                    style="transition:stroke-dashoffset 0.3s ease, stroke 0.3s ease"/>
+                  <text x="75" y="62" text-anchor="middle" font-size="11"
+                    fill="var(--bs-secondary,#6c757d)">0°</text>
+                  <text x="20" y="78" text-anchor="middle" font-size="10"
+                    fill="var(--bs-secondary,#6c757d)">0°</text>
+                  <text x="130" y="78" text-anchor="middle" font-size="10"
+                    fill="var(--bs-secondary,#6c757d)">150°</text>
+                </svg>
+                <div class="rom-value">
+                  <span id="val-flexion-uninvolved">135</span><span class="unit">°</span>
+                </div>
+              </div>
+              <div class="rom-controls">
+                <button type="button" class="rom-btn" onclick="adjustRom('flexion-uninvolved',-5)">−</button>
+                <input type="text" inputmode="numeric" pattern="[0-9]*"
+                  class="rom-input" id="input-flexion-uninvolved" value="135"
+                  oninput="setRom('flexion-uninvolved', this.value)">
+                <button type="button" class="rom-btn" onclick="adjustRom('flexion-uninvolved',5)">+</button>
+              </div>
+              <div class="rom-hint">Normal full range <strong>135°</strong></div>
+              <input type="hidden" name="rom_flexion_uninvolved" id="hidden-flexion-uninvolved" value="135">
+            </div>
+
+            <!-- Extension -->
+            <div class="rom-label-sm" style="margin-top:1rem">Extension</div>
+            <div class="rom-gauge-wrap">
+              <div class="rom-gauge" id="gauge-extension-uninvolved">
+                <svg width="150" height="82" viewBox="0 0 150 82">
+                  <path d="M 12 82 A 63 63 0 0 1 138 82" fill="none"
+                    stroke="var(--bs-border-color,#dee2e6)" stroke-width="9" stroke-linecap="round"/>
+                  <path id="arc-extension-uninvolved" d="M 12 82 A 63 63 0 0 1 138 82" fill="none"
+                    stroke="var(--bs-success,#198754)" stroke-width="9" stroke-linecap="round"
+                    stroke-dasharray="198" stroke-dashoffset="66"
+                    style="transition:stroke-dashoffset 0.3s ease, stroke 0.3s ease"/>
+                  <text x="75" y="62" text-anchor="middle" font-size="11"
+                    fill="var(--bs-secondary,#6c757d)">0°</text>
+                  <text x="20" y="78" text-anchor="middle" font-size="10"
+                    fill="var(--bs-secondary,#6c757d)">−10°</text>
+                  <text x="130" y="78" text-anchor="middle" font-size="10"
+                    fill="var(--bs-secondary,#6c757d)">30°</text>
+                </svg>
+                <div class="rom-value">
+                  <span id="val-extension-uninvolved">0</span><span class="unit">°</span>
+                </div>
+              </div>
+              <div class="rom-controls">
+                <button type="button" class="rom-btn" onclick="adjustRom('extension-uninvolved',-2)">−</button>
+                <input type="text" inputmode="text" pattern="-?[0-9]*"
+                  class="rom-input" id="input-extension-uninvolved" value="0"
+                  oninput="setRom('extension-uninvolved', this.value)">
+                <button type="button" class="rom-btn" onclick="adjustRom('extension-uninvolved',2)">+</button>
+              </div>
+              <div class="rom-hint">
+                <strong>0°</strong> = full extension · <strong>positive</strong> = deficit
+                (knee will not straighten) · <strong>negative</strong> = hyperextension
+              </div>
+              <input type="hidden" name="rom_extension_uninvolved" id="hidden-extension-uninvolved" value="0">
+            </div>
+
+            <!-- Deficit -->
+            <div class="deficit-box">
+              <div class="label">Flexion deficit</div>
+              <div class="value unmeasured" id="deficit-display">—</div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- End feel -->
+        <div class="sub-label">End feel — flexion</div>
+        <div class="chip-group" id="endfeel-flexion-group">
+          {% for val, label in [
+            ('tissue_approximation','Tissue approximation (normal)'),
+            ('capsular','Capsular'),
+            ('springy_block','Springy block'),
+            ('spasm','Spasm'),
+            ('bone_to_bone','Bone to bone'),
+            ('empty_feel','Empty feel')
+          ] %}
+          <div class="chip {% if p.get('end_feel_flexion') == val %}active{% endif %}"
+               onclick="selectChip(this,'endfeel-flexion-group'); document.getElementById('hidden-endfeel-flexion').value='{{ val }}';">
+            {{ label }}
+          </div>
+          {% endfor %}
+        </div>
+        <input type="hidden" name="end_feel_flexion" id="hidden-endfeel-flexion"
+          value="{{ p.get('end_feel_flexion') or '' }}">
+
+        <div class="sub-label">End feel — extension</div>
+        <div class="chip-group" id="endfeel-extension-group">
+          {% for val, label in [
+            ('bone_to_bone','Bone to bone (normal)'),
+            ('capsular','Capsular'),
+            ('springy_block','Springy block'),
+            ('spasm','Spasm'),
+            ('empty_feel','Empty feel')
+          ] %}
+          <div class="chip {% if p.get('end_feel_extension') == val %}active{% endif %}"
+               onclick="selectChip(this,'endfeel-extension-group'); document.getElementById('hidden-endfeel-extension').value='{{ val }}';">
+            {{ label }}
+          </div>
+          {% endfor %}
+        </div>
+        <input type="hidden" name="end_feel_extension" id="hidden-endfeel-extension"
+          value="{{ p.get('end_feel_extension') or '' }}">
+
+        <!-- Pain-resistance sequence -->
+        <div class="sub-label">Pain–resistance sequence <span class="fw-normal text-muted">(Cyriax)</span></div>
+        <div class="chip-group" id="pain-sequence-group">
+          {% for val, label in [
+            ('pain_before_resistance','Pain before resistance → acute'),
+            ('simultaneous','Simultaneous → subacute'),
+            ('resistance_before_pain','Resistance before pain → chronic')
+          ] %}
+          <div class="chip {% if p.get('pain_resistance_sequence') == val %}active{% endif %}"
+               onclick="selectChip(this,'pain-sequence-group'); document.getElementById('hidden-pain-sequence').value='{{ val }}';">
+            {{ label }}
+          </div>
+          {% endfor %}
+        </div>
+        <input type="hidden" name="pain_resistance_sequence" id="hidden-pain-sequence"
+          value="{{ p.get('pain_resistance_sequence') or '' }}">
+
+        <!-- Tibial rotation -->
+        <div class="sub-label">
+          Tibial rotation on femur
+          <span class="fw-normal text-muted">(at 90° flexion, non-weight-bearing)</span>
+        </div>
+
+        {% for field, name, normal_range in [
+          ('rotation_medial', 'Medial rotation', '20–30° normal'),
+          ('rotation_lateral', 'Lateral rotation', '30–40° normal')
+        ] %}
+        {% set rot_val = p.get(field) or 'not_assessed' %}
+        <div class="mb-3">
+          <label class="form-label fw-semibold small mb-1">
+            {{ name }}
+            <span class="fw-normal text-muted">— {{ normal_range }}</span>
+          </label>
+          <div class="chip-group" id="{{ field }}-group">
+            {% for val, label, alert in [
+              ('not_assessed', 'Not assessed', false),
+              ('normal', 'Full', false),
+              ('reduced', 'Reduced', true),
+              ('excessive', 'Excessive', true),
+              ('painful', 'Painful', true)
+            ] %}
+            <div class="chip {% if alert %}alert{% endif %} {% if rot_val == val %}active{% endif %}"
+                 onclick="selectChip(this,'{{ field }}-group'); document.getElementById('hidden-{{ field }}').value='{{ val }}';">
+              {{ label }}
+            </div>
+            {% endfor %}
+          </div>
+          <input type="hidden" name="{{ field }}" id="hidden-{{ field }}" value="{{ rot_val }}">
+        </div>
+        {% endfor %}
+        <div class="form-text mb-2">
+          Restricted or painful rotation supports meniscal or capsular involvement.
+          Excessive lateral rotation may indicate posterolateral instability.
+        </div>
+
+        <!-- Able to flex 90 -->
+        <div class="sub-label">Ottawa criterion — able to flex knee to 90°</div>
+        <div class="chip-group" id="flex90-group">
+          {% set flex90_val = p.get('able_to_flex_90') or 'not_assessed' %}
+          {% for val, label in [('not_assessed','Not assessed'),('yes','Yes'),('no','No — unable')] %}
+          <div class="chip {% if flex90_val == val %}active{% endif %}"
+               onclick="selectChip(this,'flex90-group'); document.getElementById('hidden-flex90').value='{{ val }}';">
+            {{ label }}
+          </div>
+          {% endfor %}
+        </div>
+        <input type="hidden" name="able_to_flex_90" id="hidden-flex90" value="{{ flex90_val }}">
+
+      </div>
+    </div>
+
+    <!-- ── FLEXIBILITY SECTION ────────────────────────────────── -->
+    <div class="edit-section" id="flexibility">
+      <div class="sec-head"><i class="bi bi-arrow-left-right me-1"></i> Flexibility</div>
+      <div class="sec-body">
+        <div class="row g-3">
+          <div class="col-12 col-sm-6">
+            <label class="form-label fw-semibold small mb-2">Hamstrings <span class="text-muted fw-normal">(modified SLR)</span></label>
+            <div class="chip-group" id="flex-ham-group">
+              {% for val, label in [('normal','Normal'),('reduced','Reduced'),('severely_reduced','Severely reduced')] %}
+              <div class="chip {% if p.get('flexibility_hamstrings') == val %}active{% endif %}"
+                   onclick="selectChip(this,'flex-ham-group'); document.getElementById('hidden-flex-ham').value='{{ val }}';">
+                {{ label }}
+              </div>
+              {% endfor %}
+            </div>
+            <input type="hidden" name="flexibility_hamstrings" id="hidden-flex-ham"
+              value="{{ p.get('flexibility_hamstrings') or '' }}">
+            <div class="form-text mt-1">Tightness increases patellofemoral compressive forces.</div>
+          </div>
+          <div class="col-12 col-sm-6">
+            <label class="form-label fw-semibold small mb-2">Gastrocnemius / soleus</label>
+            <div class="chip-group" id="flex-gastroc-group">
+              {% for val, label in [('normal','Normal'),('reduced','Reduced'),('severely_reduced','Severely reduced')] %}
+              <div class="chip {% if p.get('flexibility_gastroc_soleus') == val %}active{% endif %}"
+                   onclick="selectChip(this,'flex-gastroc-group'); document.getElementById('hidden-flex-gastroc').value='{{ val }}';">
+                {{ label }}
+              </div>
+              {% endfor %}
+            </div>
+            <input type="hidden" name="flexibility_gastroc_soleus" id="hidden-flex-gastroc"
+              value="{{ p.get('flexibility_gastroc_soleus') or '' }}">
+            <div class="form-text mt-1">Tightness drives compensatory pronation and medial knee torque.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sticky save -->
+    <div class="save-bar">
+      <a href="/cases/{{ case.id }}/physical" class="btn btn-outline-secondary">Cancel</a>
+      <button type="submit" class="btn btn-primary">Save ROM &amp; flexibility</button>
+    </div>
+
+  </form>
+</div>
+
+<script>
+(function() {
+  "use strict";
+
+  const ROM_CFG = {
+    "flexion-involved":     { max: 150, min: 0,   step: 5, arcMax: 198, default: 0 },
+    "flexion-uninvolved":   { max: 150, min: 0,   step: 5, arcMax: 198, default: 135 },
+    "extension-involved":   { max: 30,  min: -10, step: 2, arcMax: 198, default: 0, offset: 10, range: 40, signed: true },
+    "extension-uninvolved": { max: 30,  min: -10, step: 2, arcMax: 198, default: 0, offset: 10, range: 40, signed: true },
+  };
+
+  // FIX 3: measured-ness is tracked explicitly, not inferred by comparing
+  // against defaults. A knee locked at 0° flexion is a real, severe finding
+  // and must not be displayed as "not measured".
+  const MEASURED = new Set();
+
+  // Which gauges the server supplied a stored value for.
+  const SERVER_HAS = {
+    "flexion-involved":     {{ 'true' if p.get('rom_flexion_involved')     is not none else 'false' }},
+    "flexion-uninvolved":   {{ 'true' if p.get('rom_flexion_uninvolved')   is not none else 'false' }},
+    "extension-involved":   {{ 'true' if p.get('rom_extension_involved')   is not none else 'false' }},
+    "extension-uninvolved": {{ 'true' if p.get('rom_extension_uninvolved') is not none else 'false' }}
+  };
+
+  window.adjustRom = function(key, delta) {
+    const input = document.getElementById("input-" + key);
+    let val = parseInt(input.value, 10);
+    if (isNaN(val)) val = ROM_CFG[key].default;
+    setRom(key, val + delta);
+  };
+
+  window.setRom = function(key, val, markMeasured) {
+    const cfg = ROM_CFG[key];
+    if (!cfg) return;
+
+    // Preserve a lone "-" mid-typing so hyperextension can be entered.
+    const raw = String(val).trim();
+    if (raw === "-" && cfg.signed) return;
+
+    let n = parseInt(raw, 10);
+    if (isNaN(n)) n = cfg.default;
+    if (cfg.min !== undefined) n = Math.max(cfg.min, n);
+    n = Math.min(cfg.max, n);
+
+    const input = document.getElementById("input-" + key);
+    // Don't fight the caret while the user is typing.
+    if (input.value !== String(n)) input.value = n;
+    document.getElementById("val-" + key).textContent = n;
+    document.getElementById("hidden-" + key).value = n;
+
+    if (markMeasured !== false) MEASURED.add(key);
+
+    const arc = document.getElementById("arc-" + key);
+    if (arc) {
+      let pct = cfg.range ? (n + cfg.offset) / cfg.range : n / cfg.max;
+      pct = Math.max(0, Math.min(1, pct));
+      arc.style.strokeDashoffset = cfg.arcMax * (1 - pct);
+
+      // FIX 5: on the extension gauges a fuller arc means a WORSE finding,
+      // the opposite of flexion. Colour by severity so the visual language
+      // stops rewarding a maximum.
+      if (cfg.signed) {
+        arc.setAttribute("stroke",
+          n > 5  ? "var(--bs-danger,#dc3545)"  :
+          n > 0  ? "var(--bs-warning,#ffc107)" :
+          n < -5 ? "var(--bs-warning,#ffc107)" :
+                   "var(--bs-success,#198754)");
+      }
+    }
+    updateDeficit();
+  };
+
+  function updateDeficit() {
+    const display = document.getElementById("deficit-display");
+    if (!MEASURED.has("flexion-involved") || !MEASURED.has("flexion-uninvolved")) {
+      display.textContent = "—";
+      display.classList.add("unmeasured");
+      return;
+    }
+    const inv   = parseInt(document.getElementById("input-flexion-involved").value, 10)   || 0;
+    const uninv = parseInt(document.getElementById("input-flexion-uninvolved").value, 10) || 0;
+    display.textContent = Math.max(0, uninv - inv) + "°";
+    display.classList.remove("unmeasured");
+  }
+
+  window.toggleSwitch = function(el) { el.classList.toggle("on"); };
+
+  window.syncToggle = function(sw, inputId) {
+    document.getElementById(inputId).value = sw.classList.contains("on") ? "yes" : "no";
+  };
+
+  window.syncPainToggle = function() {
+    const flexOn = document.getElementById("sw-pain-flex").classList.contains("on");
+    const extOn  = document.getElementById("sw-pain-ext").classList.contains("on");
+    let val = "none";
+    if (flexOn && extOn) val = "both";
+    else if (flexOn) val = "flexion";
+    else if (extOn)  val = "extension";
+    document.getElementById("hidden-pain-movement").value = val;
+  };
+
+  window.selectChip = function(el, groupId) {
+    document.getElementById(groupId).querySelectorAll(".chip").forEach(c => c.classList.remove("active"));
+    el.classList.add("active");
+  };
+
+  function init() {
+    setRom("flexion-involved",     {{ p.get('rom_flexion_involved')     | default(0, true)   | int }}, SERVER_HAS["flexion-involved"]);
+    setRom("flexion-uninvolved",   {{ p.get('rom_flexion_uninvolved')   | default(135, true) | int }}, SERVER_HAS["flexion-uninvolved"]);
+    setRom("extension-involved",   {{ p.get('rom_extension_involved')   | default(0, true)   | int }}, SERVER_HAS["extension-involved"]);
+    setRom("extension-uninvolved", {{ p.get('rom_extension_uninvolved') | default(0, true)   | int }}, SERVER_HAS["extension-uninvolved"]);
+
+    // FIX 1: oninput keeps the hidden fields live, but a final sync on submit
+    // guarantees nothing is lost if focus is still inside a field when Save is
+    // tapped — the silent-wrong-value case.
+    document.getElementById("rom-form").addEventListener("submit", function() {
+      Object.keys(ROM_CFG).forEach(function(k) {
+        setRom(k, document.getElementById("input-" + k).value, MEASURED.has(k));
+      });
+    });
+  }
+
+  document.addEventListener("DOMContentLoaded", init);
+})();
+</script>
+
+{% endblock %}

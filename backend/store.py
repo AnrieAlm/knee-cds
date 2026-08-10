@@ -8,7 +8,7 @@
 # or committed to version control.
 
 import os
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
 from pymongo.mongo_client import MongoClient
 from pymongo.server_api import ServerApi
@@ -41,12 +41,22 @@ _collection = db["cases"]
 # -----------------------------------------------------------
 # Case CRUD
 # -----------------------------------------------------------
+def create_case(patient_label: str, user: dict):
+    """
+    Create a new case document and return it.
 
-def create_case(patient_label: str):
-    """Create a new case document and return it."""
+    Ownership is stamped at creation from the logged-in profile. The
+    department and grade are denormalised onto the case deliberately:
+    if a physiotherapist later transfers department, this record stays
+    attributed to where the assessment actually happened.
+    """
     case = {
         "patient_label": patient_label,
-        "created_at": date.today().isoformat(),
+        "created_at": datetime.now(timezone.utc),
+        "physio_uid": user["uid"],
+        "physio_name": user.get("full_name") or user.get("email", ""),
+        "department": user.get("department", "unassigned"),
+        "grade": user.get("grade", "unknown"),
         # agentLog starts empty; append-only via append_agent_log below.
         "agentLog": [],
     }
@@ -61,16 +71,30 @@ def create_case(patient_label: str):
     return case
 
 
-def list_cases():
-    """Return all cases."""
-    return [_clean(doc) for doc in _collection.find({})]
+def list_cases(physio_uid: str):
+    """
+    Return cases belonging to one physiotherapist.
+
+    physio_uid is a REQUIRED positional argument. A default of None
+    returning everything would mean any caller that forgot to pass it
+    silently leaked the whole collection - this way a mistake is an
+    immediate TypeError instead.
+    """
+    cursor = _collection.find({"physio_uid": physio_uid}).sort("created_at", -1)
+    return [_clean(doc) for doc in cursor]
 
 
-def get_case(case_id: str):
-    """Return one case by its string id, or None."""
-    doc = _collection.find_one({"id": case_id})
-    return _clean(doc) if doc else None
-
+def list_all_cases(department=None, grade=None, include_legacy=True):
+    """Head-of-department view. Deliberately separate from list_cases()."""
+    query = {}
+    if department:
+        query["department"] = department
+    if grade:
+        query["grade"] = grade
+    if not include_legacy:
+        query["legacy"] = {"$ne": True}
+    cursor = _collection.find(query).sort("created_at", -1)
+    return [_clean(doc) for doc in cursor]
 
 # -----------------------------------------------------------
 # Audit trail (append-only)

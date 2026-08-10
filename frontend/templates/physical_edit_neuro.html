@@ -1,0 +1,372 @@
+{% extends "case_workspace.html" %}
+{% block tab_content %}
+
+<style>
+  .phys-edit { max-width: 720px; margin: 0 auto; padding-bottom: 100px; }
+
+  .phys-edit .edit-header {
+    display: flex; align-items: center; gap: 0.75rem;
+    margin-bottom: 1rem;
+  }
+  .phys-edit .edit-header a {
+    color: var(--bs-secondary, #6c757d);
+    text-decoration: none; font-size: 1.1rem; padding: 0.25rem;
+  }
+  .phys-edit .edit-header h2 {
+    font-size: 1.15rem; font-weight: 600; margin: 0; flex: 1;
+  }
+
+  .edit-section {
+    border: 1px solid var(--bs-border-color, #dee2e6);
+    border-radius: 0.75rem;
+    background: var(--bs-body-bg, #fff);
+    margin-bottom: 1rem;
+    overflow: hidden;
+  }
+  .edit-section .sec-head {
+    display: flex; align-items: center; gap: 0.5rem;
+    padding: 0.875rem 1rem;
+    font-weight: 600; font-size: 0.9rem;
+    border-bottom: 1px solid var(--bs-border-color-translucent, rgba(0,0,0,0.06));
+    background: var(--bs-tertiary-bg, #f8f9fa);
+  }
+  .edit-section .sec-body { padding: 1rem; }
+
+  /* Status banner */
+  .status-banner {
+    padding: 0.875rem 1rem;
+    border-radius: 0.5rem;
+    margin-bottom: 1rem;
+    font-size: 0.85rem;
+  }
+  .status-banner.triggered {
+    background: var(--bs-danger-bg-subtle, #f8d7da);
+    border: 1px solid var(--bs-danger-border-subtle, #f1aeb5);
+    color: var(--bs-danger, #dc3545);
+  }
+  .status-banner.not-triggered {
+    background: var(--bs-success-bg-subtle, #d1e7dd);
+    border: 1px solid var(--bs-success-border-subtle, #a3cfbb);
+    color: var(--bs-success, #198754);
+  }
+  .status-banner .title {
+    font-weight: 600; margin-bottom: 0.15rem;
+    display: flex; align-items: center; gap: 0.4rem;
+  }
+  .status-banner .reason {
+    font-size: 0.8rem; opacity: 0.9;
+  }
+
+  /* Toggle */
+  .toggle-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0.625rem 0;
+    border-bottom: 1px solid var(--bs-border-color-translucent, rgba(0,0,0,0.06));
+    min-height: 52px;
+  }
+  .toggle-row:last-child { border-bottom: none; }
+  .toggle-row .label { font-size: 0.9rem; font-weight: 500; }
+  .toggle-row .hint {
+    display: block; font-size: 0.75rem;
+    color: var(--bs-secondary, #6c757d); font-weight: 400; margin-top: 0.1rem;
+  }
+  .switch {
+    position: relative; width: 48px; height: 28px;
+    background: var(--bs-secondary-bg, #e9ecef);
+    border-radius: 14px; cursor: pointer;
+    transition: background 0.2s ease;
+    border: 1px solid var(--bs-border-color, #dee2e6);
+    flex-shrink: 0;
+  }
+  .switch.on { background: var(--bs-primary, #0d6efd); border-color: var(--bs-primary, #0d6efd); }
+  .switch::after {
+    content: ''; position: absolute; top: 2px; left: 2px;
+    width: 22px; height: 22px; background: #fff;
+    border-radius: 50%; transition: transform 0.2s ease;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+  }
+  .switch.on::after { transform: translateX(20px); }
+
+  /* Chips */
+  .chip-group {
+    display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.5rem;
+  }
+  .chip {
+    padding: 0.5rem 0.875rem; border-radius: 0.5rem;
+    border: 1px solid var(--bs-border-color, #dee2e6);
+    font-size: 0.85rem; cursor: pointer;
+    background: transparent; color: var(--bs-secondary, #6c757d);
+    transition: all 0.12s ease; user-select: none;
+    min-height: 40px; display: flex; align-items: center;
+    font-weight: 500;
+  }
+  .chip:hover { background: var(--bs-tertiary-bg, #f8f9fa); }
+  .chip:active { transform: scale(0.95); }
+  .chip.active {
+    background: var(--bs-primary, #0d6efd); color: #fff;
+    border-color: var(--bs-primary, #0d6efd);
+  }
+  .chip.active.alert {
+    background: var(--bs-danger, #dc3545);
+    border-color: var(--bs-danger, #dc3545);
+  }
+  .chip.active.warn {
+    background: var(--bs-warning, #ffc107); color: #000;
+    border-color: var(--bs-warning, #ffc107);
+  }
+
+  /* Dermatome grid */
+  .dermatome-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.75rem;
+  }
+  .dermatome-cell .label {
+    font-size: 0.8rem; font-weight: 600;
+    margin-bottom: 0.35rem; text-align: center;
+  }
+  .dermatome-cell .hint {
+    font-size: 0.65rem; color: var(--bs-secondary, #6c757d);
+    text-align: center; margin-bottom: 0.35rem;
+  }
+
+  /* Reflex row */
+  .reflex-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0.625rem 0;
+    border-bottom: 1px solid var(--bs-border-color-translucent, rgba(0,0,0,0.06));
+    gap: 1rem;
+  }
+  .reflex-row:last-child { border-bottom: none; }
+  .reflex-name { font-size: 0.9rem; font-weight: 500; }
+  .reflex-nerve {
+    font-size: 0.72rem; color: var(--bs-secondary, #6c757d);
+  }
+
+  /* Notes */
+  .form-textarea {
+    width: 100%; min-height: 80px;
+    padding: 0.625rem 0.75rem;
+    border: 1px solid var(--bs-border-color, #dee2e6);
+    border-radius: 0.5rem;
+    background: var(--bs-body-bg, #fff);
+    color: var(--bs-body-color, #212529);
+    resize: vertical; font-family: inherit; font-size: 0.9rem;
+  }
+  .form-textarea::placeholder { color: var(--bs-secondary, #adb5bd); }
+
+  .sub-label {
+    font-size: 0.8rem; font-weight: 600;
+    color: var(--bs-secondary, #6c757d);
+    margin: 1rem 0 0.5rem;
+    text-transform: uppercase; letter-spacing: 0.4px;
+  }
+
+  /* Save bar */
+  .save-bar {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    padding: 0.75rem 1rem;
+    background: var(--bs-body-bg, #fff);
+    border-top: 1px solid var(--bs-border-color, #dee2e6);
+    display: flex; gap: 0.5rem; z-index: 1030;
+    box-shadow: 0 -2px 10px rgba(0,0,0,0.04);
+  }
+  .save-bar .btn { flex: 1; min-height: 48px; font-weight: 500; }
+
+  /* Mobile */
+  @media (max-width: 576px) {
+    .phys-edit { padding: 0 0.5rem 100px; }
+    .dermatome-grid { grid-template-columns: repeat(2, 1fr); }
+    .chip { padding: 0.6rem 1rem; font-size: 0.9rem; min-height: 44px; }
+    .switch { width: 52px; height: 32px; }
+    .switch::after { width: 26px; height: 26px; top: 2px; left: 2px; }
+    .switch.on::after { transform: translateX(18px); }
+    .reflex-row { flex-direction: column; align-items: flex-start; gap: 0.5rem; }
+    .reflex-row .chip-group { width: 100%; }
+    .reflex-row .chip { flex: 1; justify-content: center; }
+  }
+</style>
+
+<div class="phys-edit">
+
+  <div class="edit-header">
+    <a href="/cases/{{ case.id }}/physical"><i class="bi bi-arrow-left"></i></a>
+    <h2>Neurological Screen</h2>
+    <span class="text-muted small">{{ case.patient_label or 'Patient' }}</span>
+  </div>
+
+  <!-- Trigger status banner -->
+  {% if case.physical and case.physical.neuro_triggered == 'yes' %}
+  <div class="status-banner triggered">
+    <div class="title"><i class="bi bi-exclamation-triangle-fill"></i> Screen triggered</div>
+    <div class="reason">{{ case.physical.neuro_trigger_reason or 'Indication detected from examination findings.' }}</div>
+  </div>
+  {% else %}
+  <div class="status-banner not-triggered">
+    <div class="title"><i class="bi bi-check-circle-fill"></i> Not currently indicated</div>
+    <div class="reason">No neuro indication from current findings. You may still record if clinically warranted.</div>
+  </div>
+  {% endif %}
+
+  <form id="neuro-form" action="/cases/{{ case.id }}/physical/edit/neuro" method="post">
+
+    <!-- Manual override -->
+    <div class="edit-section">
+      <div class="sec-body">
+        <div class="toggle-row" style="border-bottom:none; padding-top:0;">
+          <div>
+            <div class="label">Request neuro screen manually</div>
+            <span class="hint">Override — mark screen as clinically indicated regardless of auto-triggers</span>
+          </div>
+          <div class="switch {% if case.physical and case.physical.neuro_screen_requested == 'yes' %}on{% endif %}"
+               id="sw-manual" onclick="toggleSwitch(this); syncToggle(this,'hidden-manual');"></div>
+          <input type="hidden" name="neuro_screen_requested" id="hidden-manual"
+            value="{{ case.physical.neuro_screen_requested if case.physical else 'no' }}">
+        </div>
+      </div>
+    </div>
+
+    <!-- Sensation -->
+    <div class="edit-section">
+      <div class="sec-head"><i class="bi bi-hand-index me-1"></i> Sensation by Dermatome</div>
+      <div class="sec-body">
+        <div class="dermatome-grid">
+          {% for derm, area in [
+            ('l3', 'Medial knee'),
+            ('l4', 'Medial lower leg'),
+            ('l5', 'Dorsum of foot'),
+            ('s1', 'Lateral foot / sole')
+          ] %}
+          <div class="dermatome-cell">
+            <div class="label">{{ derm | upper }}</div>
+            <div class="hint">{{ area }}</div>
+            <div class="chip-group" id="sensation-{{ derm }}-group">
+              {% for val, label in [('intact','Intact'),('reduced','Reduced'),('absent','Absent')] %}
+              <div class="chip {% if val != 'intact' %}alert{% endif %} {% if case.physical and case.physical.get('sensation_' ~ derm) == val %}active{% endif %}"
+                   onclick="selectChip(this,'sensation-{{ derm }}-group'); document.getElementById('hidden-sensation-{{ derm }}').value='{{ val }}';"
+                   style="flex:1; justify-content:center;">
+                {{ label }}
+              </div>
+              {% endfor %}
+            </div>
+            <input type="hidden" name="sensation_{{ derm }}" id="hidden-sensation-{{ derm }}"
+              value="{{ case.physical.get('sensation_' ~ derm) if case.physical else '' }}">
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Reflexes -->
+    <div class="edit-section">
+      <div class="sec-head"><i class="bi bi-activity me-1"></i> Reflexes</div>
+      <div class="sec-body">
+        {% for field, name, nerve in [
+          ('reflex_patella', 'Patella reflex', 'L3–L4'),
+          ('reflex_achilles', 'Achilles reflex', 'S1–S2')
+        ] %}
+        <div class="reflex-row">
+          <div>
+            <div class="reflex-name">{{ name }}</div>
+            <div class="reflex-nerve">{{ nerve }}</div>
+          </div>
+          <div class="chip-group" id="reflex-{{ field }}-group">
+            {% for val, label in [('normal','Normal'),('reduced','Reduced'),('absent','Absent'),('hyperreflexic','Hyper')] %}
+            <div class="chip {% if val != 'normal' %}warn{% endif %} {% if case.physical and case.physical.get(field) == val %}active{% endif %}"
+                 onclick="selectChip(this,'reflex-{{ field }}-group'); document.getElementById('hidden-{{ field }}').value='{{ val }}';">
+              {{ label }}
+            </div>
+            {% endfor %}
+          </div>
+          <input type="hidden" name="{{ field }}" id="hidden-{{ field }}"
+            value="{{ case.physical.get(field) if case.physical else '' }}">
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- Motor / Balance -->
+    <div class="edit-section">
+      <div class="sec-head"><i class="bi bi-person-walking me-1"></i> Motor & Proprioception</div>
+      <div class="sec-body">
+
+        <div class="sub-label" style="margin-top:0">Peroneal nerve — dorsiflexion against resistance</div>
+        <div class="chip-group" id="peroneal-group">
+          {% for val, label in [('normal','Normal'),('weak','Weak'),('absent','Absent')] %}
+          <div class="chip {% if val != 'normal' %}alert{% endif %} {% if case.physical and case.physical.peroneal_dorsiflexion == val %}active{% endif %}"
+               onclick="selectChip(this,'peroneal-group'); document.getElementById('hidden-peroneal').value='{{ val }}';">
+            {{ label }}
+          </div>
+          {% endfor %}
+        </div>
+        <input type="hidden" name="peroneal_dorsiflexion" id="hidden-peroneal"
+          value="{{ case.physical.peroneal_dorsiflexion if case.physical else '' }}">
+
+        <div class="sub-label">Single-leg balance (10 seconds)</div>
+        <div class="chip-group" id="balance-group">
+          {% for val, label in [('maintained_10s','Maintained 10s'),('unable','Unable')] %}
+          <div class="chip {% if val == 'unable' %}alert{% endif %} {% if case.physical and case.physical.balance_single_leg == val %}active{% endif %}"
+               onclick="selectChip(this,'balance-group'); document.getElementById('hidden-balance').value='{{ val }}';">
+            {{ label }}
+          </div>
+          {% endfor %}
+        </div>
+        <input type="hidden" name="balance_single_leg" id="hidden-balance"
+          value="{{ case.physical.balance_single_leg if case.physical else '' }}">
+
+        <div class="sub-label">Mechanoreceptor involvement</div>
+        <div class="chip-group" id="mechano-group">
+          {% for val, label in [('not_suspected','Not suspected'),('suspected','Suspected')] %}
+          <div class="chip {% if val == 'suspected' %}warn{% endif %} {% if case.physical and case.physical.mechanoreceptor_involvement == val %}active{% endif %}"
+               onclick="selectChip(this,'mechano-group'); document.getElementById('hidden-mechano').value='{{ val }}';">
+            {{ label }}
+          </div>
+          {% endfor %}
+        </div>
+        <input type="hidden" name="mechanoreceptor_involvement" id="hidden-mechano"
+          value="{{ case.physical.mechanoreceptor_involvement if case.physical else '' }}">
+
+      </div>
+    </div>
+
+    <!-- Notes -->
+    <div class="edit-section">
+      <div class="sec-body">
+        <label class="form-label fw-semibold small mb-2">Neuro notes</label>
+        <textarea name="neuro_notes" class="form-textarea" rows="3"
+          placeholder="e.g. Reduced L4 sensation over medial leg. Patella reflex 1+. Peroneal weakness noted.">{{ case.physical.neuro_notes if case.physical else '' }}</textarea>
+      </div>
+    </div>
+
+    <!-- Sticky save -->
+    <div class="save-bar">
+      <a href="/cases/{{ case.id }}/physical" class="btn btn-outline-secondary">Cancel</a>
+      <button type="submit" class="btn btn-primary">Save neuro screen</button>
+    </div>
+
+  </form>
+</div>
+
+<script>
+(function() {
+  "use strict";
+
+  window.toggleSwitch = function(el) {
+    el.classList.toggle("on");
+  };
+
+  window.syncToggle = function(sw, inputId) {
+    document.getElementById(inputId).value = sw.classList.contains("on") ? "yes" : "no";
+  };
+
+  window.selectChip = function(el, groupId) {
+    const group = document.getElementById(groupId);
+    group.querySelectorAll(".chip").forEach(function(c) {
+      c.classList.remove("active");
+    });
+    el.classList.add("active");
+  };
+})();
+</script>
+
+{% endblock %}
