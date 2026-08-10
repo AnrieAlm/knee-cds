@@ -29,7 +29,7 @@ from fastapi.templating import Jinja2Templates
 import starlette.status as status
 
 from backend import store
-from backend.auth import get_user, validate_firebase_token
+from backend.auth import get_user, validate_firebase_token, get_current_user
 
 # Deterministic safety layer — pure Python, no LLM
 from backend.rules.ottawa import apply_ottawa_knee_rule, OttawaInput
@@ -256,30 +256,35 @@ async def login(request: Request):
 
 @app.get("/")
 async def index(request: Request):
-    if not get_user(request):
+    user = get_current_user(request)
+    if not user:
         return RedirectResponse("/login")
-
     return templates.TemplateResponse(
-        request, "index.html", {"cases": store.list_cases()}
+        request, "index.html",
+        {"cases": store.list_cases(user["uid"]), "user": user},
     )
+
+
+@app.post("/cases/new")
+async def new_case_submit(request: Request):
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse("/login")
+    if user.get("role") == "admin":
+        raise HTTPException(
+            status_code=403,
+            detail="Head of department accounts have read-only access",
+        )
+    form = await request.form()
+    store.create_case(form["patient_label"], user)
+    return RedirectResponse("/", status_code=303)
 
 
 @app.get("/cases/new")
 async def new_case_form(request: Request):
     if not get_user(request):
         return RedirectResponse("/login")
-
     return templates.TemplateResponse(request, "new_case.html")
-
-
-@app.post("/cases/new")
-async def new_case_submit(request: Request):
-    if not get_user(request):
-        return RedirectResponse("/login")
-
-    form = await request.form()
-    store.create_case(form["patient_label"])
-    return RedirectResponse("/", status_code=303)
 
 
 @app.get("/cases/{case_id}")

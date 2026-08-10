@@ -167,3 +167,8 @@ def save_physical(case_id: str, physical: dict):
         {'$set': {'physical': physical}},
     )
     return physical
+
+def get_case(case_id: str):
+    """Return one case by its string id, or None."""
+    doc = _collection.find_one({"id": case_id})
+    return _clean(doc) if doc else None
