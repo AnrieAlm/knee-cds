@@ -39,6 +39,7 @@ from backend.rules.pittsburgh import apply_pittsburgh_knee_rule, PittsburghInput
 from backend.safety.red_flags import screen_red_flags, RedFlagInput
 # addition 1
 from backend.agent.physical_context import formatPhysicalForAgent
+from backend.investigation_context import build_investigation_context_from_list
 # --- Retrieval (used by the agent as a tool) ---
 from backend.rag.retriever import retrieve
 
@@ -365,7 +366,7 @@ def _extract_retrieved(response):
 # ===========================================================
 # Quick manual test
 # ===========================================================
-def run_agent_only(query, safety_facts, physical_dict=None):
+def run_agent_only(query, safety_facts, physical_dict=None, investigations=None):
     # thin wrapper so main.py can call the agent without re-running the
     # deterministic gates (those already ran when the case was created)
     llm = buildLlm() 
@@ -390,8 +391,21 @@ def run_agent_only(query, safety_facts, physical_dict=None):
             + physical_text
         )
 
-    # inject the pre-computed safety facts, the physical findings and the clinician question
-    full_prompt = safety_facts + physical_block + "\n\nCLINICIAN QUESTION: " + query
+    # Prior investigations. Placed after the physical block so the agent reads
+    # the clinician's own findings before any radiology report, mirroring the
+    # tab order. Only clinician-verified transcriptions are included; that gate
+    # is enforced in investigation_context, not here.
+    investigation_block = "\n\n" + build_investigation_context_from_list(investigations)
+
+    # inject the pre-computed safety facts, the physical findings, the prior
+    # investigations and the clinician question
+    full_prompt = (
+        safety_facts
+        + physical_block
+        + investigation_block
+        + "\n\nCLINICIAN QUESTION: "
+        + query
+    )
 
 
     response = agent.invoke(

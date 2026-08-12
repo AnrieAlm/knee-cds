@@ -5,36 +5,50 @@
 <div class="d-flex justify-content-between align-items-center mb-3">
     <div>
         <h1 class="h4 mb-0">{{ case.patient_label }}</h1>
-        <small class="text-muted">Case ID: {{ case.id }} · Created {{ case.created_at }}</small>
+        <small class="text-muted">
+            Case ID: {{ case.id }}
+            {% if case.created_at %}
+                · Created {{ case.created_at.strftime('%d %b %Y, %H:%M') if case.created_at.strftime is defined else case.created_at }}
+            {% endif %}
+            {% if is_admin_view and case.physio_name %}
+                · {{ case.physio_name }}
+            {% endif %}
+        </small>
     </div>
-    <a href="/" class="btn btn-outline-secondary btn-sm">Back to Cases</a>
+    <a href="{% if is_admin_view %}/admin{% else %}/{% endif %}" class="btn btn-outline-secondary btn-sm">
+        {% if is_admin_view %}Back to Oversight{% else %}Back to Cases{% endif %}
+    </a>
 </div>
+
+{% if is_admin_view %}
+<div class="alert alert-secondary py-2 px-3 mb-3" style="font-size: 0.8rem;">
+    Read-only oversight view — this record belongs to
+    {{ case.physio_name or 'another physiotherapist' }} and cannot be edited here.
+</div>
+{% endif %}
+
+{% set base = '/admin/cases/' ~ case.id if is_admin_view else '/cases/' ~ case.id %}
 
 <ul class="nav nav-tabs mb-3">
     <li class="nav-item">
-        <a class="nav-link {% if active_tab == 'history' %}active{% endif %}" href="/cases/{{ case.id }}/history">History</a>
+        <a class="nav-link {% if active_tab == 'history' %}active{% endif %}" href="{{ base }}">History</a>
     </li>
-
-  
-
+    {% if not is_admin_view %}
     <li class="nav-item">
         <a class="nav-link {% if active_tab == 'exam' %}active{% endif %}" href="/cases/{{ case.id }}/exam">Exam</a>
     </li>
-      <a href="/cases/{{ case.id }}/physical"
-   class="nav-link {% if active_tab == 'physical' %}active{% endif %}">
-    Physical
-</a>
-
-    
+    {% endif %}
     <li class="nav-item">
-        <a class="nav-link {% if active_tab == 'summary' %}active{% endif %}" href="/cases/{{ case.id }}/summary">Summary</a>
+        <a class="nav-link {% if active_tab == 'physical' %}active{% endif %}" href="{{ base }}/physical">Physical</a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link {% if active_tab == 'investigations' %}active{% endif %}" href="/cases/{{ case.id }}/investigations">Investigations</a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link {% if active_tab == 'summary' %}active{% endif %}" href="{{ base }}/summary">Summary</a>
     </li>
 </ul>
 
-
-
 {% block tab_content %}{% endblock %}
-
-
 
 {% endblock %}

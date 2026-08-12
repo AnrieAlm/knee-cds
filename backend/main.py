@@ -40,7 +40,15 @@ from backend.safety.red_flags import screen_red_flags, RedFlagInput
 from backend.agent.orchestrator import run_agent_only
 
 # Physical examination router (owns all /physical routes)
+
 from backend.physical_backend import router as physical_router
+
+from backend.investigation_routes import router as investigation_router
+
+
+# Admin router (read-only head-of-department oversight)
+from backend.admin import router as admin_router
+
 
 
 app = FastAPI(
@@ -49,6 +57,9 @@ app = FastAPI(
     version="0.1.0",
 )
 
+app.include_router(physical_router)
+app.include_router(admin_router)
+app.include_router(investigation_router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -259,6 +270,8 @@ async def index(request: Request):
     user = get_current_user(request)
     if not user:
         return RedirectResponse("/login")
+    if user.get("role") == "admin":
+        return RedirectResponse("/admin")
     return templates.TemplateResponse(
         request, "index.html",
         {"cases": store.list_cases(user["uid"]), "user": user},
@@ -596,7 +609,7 @@ async def case_suggest(request: Request, case_id: str):
 
     print(f"[suggest] query:\n{query}")
 
-    result = run_agent_only(query, safety_facts, case.get("physical"))
+    result = run_agent_only(query, safety_facts, case.get("physical"), case.get("investigations"))
 
     # Append-only audit log: query, retrieved chunks, and output.
     # This is the chain that makes the reasoning traceable.
@@ -667,7 +680,7 @@ async def case_suggest_async(request: Request, case_id: str):
         # the model ran; writing it back would silently discard anything
         # saved to the case while the agent was working.
         try:
-            result = run_agent_only(query, safety_facts, case.get("physical"))
+            result = run_agent_only(query, safety_facts, case.get("physical"), case.get("investigations"))
 
             fresh = store.get_case(case_id)
             current = fresh.get("assessment", {}) if fresh else {}

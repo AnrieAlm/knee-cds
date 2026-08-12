@@ -1,0 +1,368 @@
+{% extends "case_workspace.html" %}
+{% block tab_content %}
+<style>
+  /* ── Investigations tab ────────────────────────────────────────
+     Third visual class. Deliberately distinct from the navy System
+     Check chips (deterministic) and the violet Suggested chips
+     (agent output). Amber = machine transcription awaiting human
+     confirmation. Slate = confirmed clinical data.
+
+     The amber → slate transition on verification is intentional:
+     once a clinician has confirmed the text against the source
+     document it is clinician-entered data, and continuing to badge
+     it as machine output would misrepresent its provenance just as
+     badging agent output as deterministic would.
+  ─────────────────────────────────────────────────────────────── */
+  .inv-wrap { max-width: 800px; margin: 0 auto; }
+
+  .inv-card {
+    border: 1px solid var(--bs-border-color, #dee2e6);
+    border-radius: 0.5rem;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    background: #fff;
+  }
+
+  .inv-card.inv-unverified {
+    border: 1px solid #b8860b;
+    border-left-width: 4px;
+    background: #fffdf6;
+  }
+  .inv-card.inv-verified {
+    border-left: 4px solid #475569;
+    background: #f8fafc;
+  }
+  .inv-card.inv-problem {
+    border-left: 4px solid #b91c1c;
+    background: #fef7f7;
+  }
+
+  .inv-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    padding: 0.2rem 0.6rem;
+    border-radius: 999px;
+    margin-bottom: 0.6rem;
+  }
+  .inv-badge.inv-unverified {
+    color: #7c5c00;
+    background: transparent;
+    border: 1px solid #b8860b;
+  }
+  .inv-badge.inv-verified {
+    color: #fff;
+    background: #475569;
+    border: 1px solid #475569;
+  }
+  .inv-badge.inv-problem {
+    color: #fff;
+    background: #b91c1c;
+    border: 1px solid #b91c1c;
+  }
+
+  .inv-descriptor { font-weight: 600; font-size: 0.95rem; margin-bottom: 0.5rem; }
+  .inv-field-label {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #6c757d;
+    margin-bottom: 0.15rem;
+  }
+  .inv-field-text {
+    font-size: 0.9rem;
+    white-space: pre-wrap;
+    margin-bottom: 0.75rem;
+  }
+  .inv-note {
+    font-size: 0.8rem;
+    color: #6c757d;
+    margin-top: 0.5rem;
+  }
+  .inv-locked {
+    border: 1px dashed var(--bs-border-color, #dee2e6);
+    border-radius: 0.5rem;
+    padding: 1.5rem;
+    text-align: center;
+    color: #6c757d;
+  }
+  .inv-section-title {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #6c757d;
+    margin: 1.5rem 0 0.5rem;
+  }
+  @media (max-width: 576px) {
+    .inv-card { padding: 0.85rem; }
+  }
+</style>
+
+<div class="inv-wrap">
+
+  <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-1">
+    <h2 class="h5 mb-0">Prior Investigations</h2>
+    <span class="text-muted small">{{ investigations|length }} of {{ max_per_case }}</span>
+  </div>
+  <p class="text-muted small">
+    Radiology reports the patient has brought with them. Recorded after the
+    physical examination so that your own findings are documented first.
+  </p>
+
+  {% if flash %}
+    {% set messages = {
+      'at_capacity': ('warning', 'This case already holds the maximum number of investigations.'),
+      'upload_rejected': ('warning', 'That file could not be accepted. Upload a PDF, PNG or JPEG under 15 MB.'),
+      'uploaded_extracted': ('info', 'Report transcribed. Check it against the original before confirming.'),
+      'uploaded_rejected': ('warning', 'That document does not appear to be a radiology report. Enter the reported findings manually below.'),
+      'uploaded_failed': ('warning', 'The report could not be read. Enter the findings manually below.'),
+      'verified': ('success', 'Investigation confirmed and available to the assessment.'),
+      'manual_added': ('success', 'Investigation recorded.'),
+      'deleted': ('secondary', 'Investigation removed.'),
+      'not_pending': ('secondary', 'That investigation is no longer awaiting verification.'),
+      'invalid_field': ('warning', 'Please select a valid modality and side.'),
+      'empty_report': ('warning', 'Enter the reported findings or impression.')
+    } %}
+    {% set msg = messages.get(flash) %}
+    {% if msg %}
+      <div class="alert alert-{{ msg[0] }} py-2 small">{{ msg[1] }}</div>
+    {% endif %}
+  {% endif %}
+
+  {% if not exam_submitted %}
+
+    <div class="inv-locked">
+      <div class="fw-semibold mb-1">Complete the physical examination first</div>
+      <p class="small mb-3">
+        Prior imaging is recorded after your examination. Reading a radiology
+        impression beforehand tends to steer the examination towards
+        confirming it rather than testing it independently.
+      </p>
+      <a class="btn btn-sm btn-outline-secondary"
+         href="/cases/{{ case_id }}/exam">Go to Examination</a>
+    </div>
+
+  {% else %}
+
+    {# ── Existing investigations ─────────────────────────────── #}
+    {% for inv in investigations %}
+      {% set vclass = visual_classes.get(inv.extraction_status, 'inv-problem') %}
+      <div class="inv-card {{ vclass }}">
+
+        <span class="inv-badge {{ vclass }}">
+          {{ status_labels.get(inv.extraction_status, 'Unknown status') }}
+        </span>
+
+        <div class="inv-descriptor">
+          {{ modalities.get(inv.modality, 'Investigation') }} —
+          {{ sides.get(inv.side, 'Side not stated') }}
+          {% if inv.study_date %}· {{ inv.study_date.strftime('%d %b %Y') }}{% endif %}
+        </div>
+
+        {% if inv.extraction_status == 'EXTRACTED' and not is_admin_view %}
+
+          <p class="small text-muted mb-2">
+            Transcribed by the system. Check every field against the original
+            document, correct anything wrong, then confirm. Until you confirm,
+            this is not used in the assessment.
+          </p>
+
+          {% if inv.file_ref %}
+            <a class="btn btn-sm btn-outline-secondary mb-3"
+               href="/cases/{{ case_id }}/investigations/{{ inv.inv_id }}/source"
+               target="_blank" rel="noopener">Open original document</a>
+          {% endif %}
+
+          <form method="post"
+                action="/cases/{{ case_id }}/investigations/{{ inv.inv_id }}/verify">
+            <div class="row g-2 mb-2">
+              <div class="col-12 col-sm-4">
+                <label class="inv-field-label">Modality</label>
+                <select name="modality" class="form-select form-select-sm">
+                  {% for key, label in modalities.items() %}
+                    <option value="{{ key }}" {% if inv.modality == key %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-12 col-sm-4">
+                <label class="inv-field-label">Side</label>
+                <select name="side" class="form-select form-select-sm">
+                  {% for key, label in sides.items() %}
+                    <option value="{{ key }}" {% if inv.side == key %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-12 col-sm-4">
+                <label class="inv-field-label">Study date</label>
+                <input type="date" name="study_date" class="form-control form-control-sm"
+                       value="{% if inv.study_date %}{{ inv.study_date.strftime('%Y-%m-%d') }}{% endif %}">
+              </div>
+            </div>
+
+            <label class="inv-field-label">Reported findings</label>
+            <textarea name="report_findings" rows="5"
+                      maxlength="{{ findings_limit }}"
+                      class="form-control form-control-sm mb-2">{{ inv.report_findings }}</textarea>
+
+            <label class="inv-field-label">Reported impression</label>
+            <textarea name="report_impression" rows="3"
+                      maxlength="{{ impression_limit }}"
+                      class="form-control form-control-sm mb-3">{{ inv.report_impression }}</textarea>
+
+            <button type="submit" class="btn btn-sm btn-primary">
+              Confirm against original
+            </button>
+          </form>
+
+        {% else %}
+
+          {% if inv.report_findings %}
+            <div class="inv-field-label">Reported findings</div>
+            <div class="inv-field-text">{{ inv.report_findings }}</div>
+          {% endif %}
+          {% if inv.report_impression %}
+            <div class="inv-field-label">Reported impression</div>
+            <div class="inv-field-text">{{ inv.report_impression }}</div>
+          {% endif %}
+
+          {% if inv.extraction_status in ('FAILED', 'REJECTED') %}
+            <p class="small mb-2">
+              {% if inv.extraction_status == 'REJECTED' %}
+                This looks like an image study or an unrelated document rather
+                than a typed report. The system does not interpret images —
+                enter the radiologist's reported findings manually below.
+              {% else %}
+                The document could not be read. Enter the reported findings
+                manually below.
+              {% endif %}
+            </p>
+          {% endif %}
+
+          {% if inv.file_ref %}
+            <a class="small"
+               href="/cases/{{ case_id }}/investigations/{{ inv.inv_id }}/source"
+               target="_blank" rel="noopener">Open original document</a>
+          {% endif %}
+
+          {% if inv.extraction_status == 'VERIFIED' and inv.verified_at %}
+            <div class="inv-note">
+              Confirmed against source on {{ inv.verified_at.strftime('%d %b %Y') }}.
+            </div>
+          {% endif %}
+
+        {% endif %}
+
+        {% if not is_admin_view %}
+          <form method="post" class="mt-3"
+                action="/cases/{{ case_id }}/investigations/{{ inv.inv_id }}/delete"
+                onsubmit="return confirm('Remove this investigation from the case?');">
+            <button type="submit" class="btn btn-sm btn-link text-danger p-0">Remove</button>
+          </form>
+        {% endif %}
+
+      </div>
+    {% endfor %}
+
+    {% if not investigations %}
+      <p class="text-muted small fst-italic">
+        No prior investigations recorded. If the patient has not brought any,
+        continue to the summary.
+      </p>
+    {% endif %}
+
+    {% if not is_admin_view %}
+
+      {% if at_capacity %}
+        <p class="text-muted small">
+          Maximum of {{ max_per_case }} investigations per case reached.
+        </p>
+      {% else %}
+
+        {# ── Upload ──────────────────────────────────────────── #}
+        <div class="inv-section-title">Add a report</div>
+
+        <form method="post" enctype="multipart/form-data"
+              action="/cases/{{ case_id }}/investigations/upload"
+              class="inv-card">
+          <label class="inv-field-label">Upload the radiology report</label>
+          <input type="file" name="report_file" required
+                 accept="application/pdf,image/png,image/jpeg"
+                 class="form-control form-control-sm mb-2">
+          <p class="small text-muted mb-2">
+            PDF or a photo of the typed report, under 15 MB. The system
+            transcribes the report text only — it does not read scans or
+            images, and you confirm the transcription before it is used.
+          </p>
+          <button type="submit" class="btn btn-sm btn-outline-primary">
+            Upload and transcribe
+          </button>
+        </form>
+
+        {# ── Manual entry ────────────────────────────────────── #}
+        <details class="inv-card">
+          <summary class="fw-semibold small">Enter findings manually instead</summary>
+          <form method="post" class="mt-3"
+                action="/cases/{{ case_id }}/investigations/manual">
+            <div class="row g-2 mb-2">
+              <div class="col-12 col-sm-4">
+                <label class="inv-field-label">Modality</label>
+                <select name="modality" class="form-select form-select-sm">
+                  {% for key, label in modalities.items() %}
+                    <option value="{{ key }}">{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-12 col-sm-4">
+                <label class="inv-field-label">Side</label>
+                <select name="side" class="form-select form-select-sm">
+                  {% for key, label in sides.items() %}
+                    <option value="{{ key }}">{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-12 col-sm-4">
+                <label class="inv-field-label">Study date</label>
+                <input type="date" name="study_date" class="form-control form-control-sm">
+              </div>
+            </div>
+
+            <label class="inv-field-label">Reported findings</label>
+            <textarea name="report_findings" rows="5"
+                      maxlength="{{ findings_limit }}"
+                      class="form-control form-control-sm mb-2"
+                      placeholder="Transcribe the findings section of the report."></textarea>
+
+            <label class="inv-field-label">Reported impression</label>
+            <textarea name="report_impression" rows="3"
+                      maxlength="{{ impression_limit }}"
+                      class="form-control form-control-sm mb-3"
+                      placeholder="Transcribe the impression or conclusion, if present."></textarea>
+
+            <button type="submit" class="btn btn-sm btn-primary">Record investigation</button>
+          </form>
+        </details>
+
+      {% endif %}
+    {% endif %}
+
+    {% if pending %}
+      <div class="alert alert-warning py-2 small mt-3">
+        {{ pending|length }} transcription{{ 's' if pending|length != 1 }}
+        awaiting confirmation. Unconfirmed transcriptions are withheld from
+        the assessment.
+      </div>
+    {% endif %}
+
+    <div class="d-flex justify-content-end mt-4">
+      <a class="btn btn-sm btn-primary" href="/cases/{{ case_id }}/summary">
+        Continue to Summary
+      </a>
+    </div>
+
+  {% endif %}
+
+</div>
+{% endblock %}

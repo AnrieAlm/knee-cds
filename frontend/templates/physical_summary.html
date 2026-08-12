@@ -221,10 +221,14 @@
   {% if not case.physical %}
     <div class="phys-empty">
       <i class="bi bi-clipboard2-pulse"></i>
-      <p class="mb-2">No physical examination recorded yet.</p>
-      <a href="/cases/{{ case.id }}/physical/edit/observation" class="btn btn-primary btn-sm">
-        <i class="bi bi-plus-lg me-1"></i>Start examination
-      </a>
+      {% if is_admin_view %}
+        <p class="mb-0">No physical examination has been recorded for this case.</p>
+      {% else %}
+        <p class="mb-2">No physical examination recorded yet.</p>
+        <a href="/cases/{{ case.id }}/physical/edit/observation" class="btn btn-primary btn-sm">
+          <i class="bi bi-plus-lg me-1"></i>Start examination
+        </a>
+      {% endif %}
     </div>
   {% else %}
 
@@ -282,14 +286,14 @@
       </div>
       <div class="card-body">
         <div class="tag-list">
-          {% if case.physical.rom_flexion_involved is not none %}
-            {% set deficit = (case.physical.rom_flexion_uninvolved|int(default=135)) - (case.physical.rom_flexion_involved|int(default=0)) %}
+          {% if case.physical.get('rom_flexion_involved') not in (None, '') %}
+            {% set deficit = (case.physical.get('rom_flexion_uninvolved') or 135)|int - (case.physical.get('rom_flexion_involved') or 0)|int %}
             <span class="tag {% if deficit > 15 %}alert{% elif deficit > 5 %}warn{% else %}success{% endif %}">
               Flexion {{ case.physical.rom_flexion_involved }}°
               {% if deficit > 0 %}({{ deficit }}° deficit){% endif %}
             </span>
           {% endif %}
-          {% if case.physical.rom_extension_involved is not none %}
+          {% if case.physical.get('rom_extension_involved') not in (None, '') %}
             <span class="tag">Ext {{ case.physical.rom_extension_involved }}°</span>
           {% endif %}
           {% if case.physical.extension_lag == 'yes' %}

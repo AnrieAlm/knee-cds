@@ -1,0 +1,240 @@
+{% extends "base.html" %}
+{% block content %}
+
+<style>
+  .admin-wrap { max-width: 1000px; margin: 0 auto; }
+
+  .admin-header {
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.25rem;
+  }
+  .admin-header h2 { font-size: 1.25rem; font-weight: 600; margin: 0; }
+
+  .admin-sub {
+    font-size: 0.8rem; color: var(--bs-secondary, #6c757d);
+    margin-bottom: 1rem;
+  }
+
+  /* Read-only banner - deliberately plain, not an alert.
+     It states a property of the view, it is not a warning. */
+  .readonly-note {
+    font-size: 0.75rem;
+    color: var(--bs-secondary, #6c757d);
+    border-left: 3px solid var(--bs-secondary-border-subtle, #ced4da);
+    padding: 0.35rem 0.75rem;
+    margin-bottom: 1rem;
+    background: var(--bs-tertiary-bg, #f8f9fa);
+  }
+
+  .stat-strip { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; }
+  .stat {
+    flex: 1 1 130px; border: 1px solid var(--bs-border-color, #dee2e6);
+    border-radius: 0.5rem; padding: 0.6rem 0.75rem; background: var(--bs-body-bg, #fff);
+  }
+  .stat .n { font-size: 1.35rem; font-weight: 600; line-height: 1.1; }
+  .stat .l { font-size: 0.7rem; color: var(--bs-secondary, #6c757d); text-transform: uppercase; letter-spacing: 0.03em; }
+  .stat.danger .n { color: var(--bs-danger, #dc3545); }
+  .stat.warn .n { color: var(--bs-warning-text, #664d03); }
+
+  .filter-bar { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-bottom: 1rem; }
+  .chip {
+    font-size: 0.78rem; padding: 0.3rem 0.7rem; border-radius: 999px;
+    border: 1px solid var(--bs-border-color, #dee2e6);
+    background: var(--bs-body-bg, #fff); color: inherit; text-decoration: none;
+    white-space: nowrap;
+  }
+  .chip:hover { border-color: var(--bs-primary, #0d6efd); }
+  .chip.active {
+    background: var(--bs-primary, #0d6efd); color: #fff;
+    border-color: var(--bs-primary, #0d6efd);
+  }
+  .chip .c { opacity: 0.65; margin-left: 0.25rem; }
+
+  .case-row {
+    display: block; text-decoration: none; color: inherit;
+    border: 1px solid var(--bs-border-color, #dee2e6);
+    border-radius: 0.5rem; padding: 0.7rem 0.85rem;
+    margin-bottom: 0.5rem; background: var(--bs-body-bg, #fff);
+  }
+  .case-row:hover { border-color: var(--bs-primary, #0d6efd); }
+  .case-row .r1 {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 0.5rem; flex-wrap: wrap;
+  }
+  .case-row .label { font-weight: 600; font-size: 0.92rem; }
+  .case-row .when { font-size: 0.72rem; color: var(--bs-secondary, #6c757d); }
+  .case-row .r2 {
+    font-size: 0.75rem; color: var(--bs-secondary, #6c757d); margin-top: 0.15rem;
+  }
+  .case-row .tags { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.45rem; }
+  .t {
+    font-size: 0.7rem; padding: 0.15rem 0.45rem; border-radius: 0.3rem;
+    border: 1px solid var(--bs-border-color-translucent, rgba(0,0,0,0.08));
+    background: var(--bs-tertiary-bg, #f8f9fa);
+  }
+  .t.red { background: var(--bs-danger-bg-subtle, #f8d7da); color: var(--bs-danger-text, #58151c); border-color: var(--bs-danger-border-subtle, #f1aeb5); }
+  .t.amber { background: var(--bs-warning-bg-subtle, #fff3cd); color: var(--bs-warning-text, #664d03); border-color: var(--bs-warning-border-subtle, #ffe69c); }
+  .t.green { background: var(--bs-success-bg-subtle, #d1e7dd); color: var(--bs-success-text, #0f5132); border-color: var(--bs-success-border-subtle, #a3cfbb); }
+  .t.grey { color: var(--bs-secondary, #6c757d); font-style: italic; background: transparent; border-style: dashed; }
+
+  .roster { margin-top: 2rem; }
+  .roster h3 { font-size: 1rem; font-weight: 600; margin-bottom: 0.5rem; }
+  .roster table { width: 100%; font-size: 0.82rem; border-collapse: collapse; }
+  .roster th {
+    text-align: left; font-weight: 600; font-size: 0.7rem; text-transform: uppercase;
+    letter-spacing: 0.03em; color: var(--bs-secondary, #6c757d);
+    border-bottom: 1px solid var(--bs-border-color, #dee2e6); padding: 0.4rem 0.5rem;
+  }
+  .roster td {
+    padding: 0.45rem 0.5rem;
+    border-bottom: 1px solid var(--bs-border-color-translucent, rgba(0,0,0,0.06));
+  }
+
+  .empty { text-align: center; padding: 2.5rem 1rem; color: var(--bs-secondary, #6c757d); }
+
+  @media (max-width: 576px) {
+    .stat { flex: 1 1 45%; }
+    .roster table { font-size: 0.75rem; }
+    .roster .hide-sm { display: none; }
+  }
+</style>
+
+<div class="admin-wrap">
+
+  <div class="admin-header">
+    <h2>Department Oversight</h2>
+    <span class="text-muted small">{{ user.full_name or user.email }}</span>
+  </div>
+  <div class="admin-sub">All assessments across all departments</div>
+
+  <div class="readonly-note">
+    This is a read-only view. Assessments are attributed to the physiotherapist
+    who performed them and cannot be edited or regenerated from here.
+  </div>
+
+  {% if not roster_only %}
+
+  <!-- Summary counts -->
+  <div class="stat-strip">
+    <div class="stat">
+      <div class="n">{{ stats.total }}</div>
+      <div class="l">Cases shown</div>
+    </div>
+    <div class="stat danger">
+      <div class="n">{{ stats.red_flags }}</div>
+      <div class="l">Red flags</div>
+    </div>
+    <div class="stat warn">
+      <div class="n">{{ stats.xray }}</div>
+      <div class="l">X-ray indicated</div>
+    </div>
+    <div class="stat">
+      <div class="n">{{ stats.no_assessment }}</div>
+      <div class="l">No assessment</div>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <div class="filter-bar">
+    <a class="chip {% if not active_department and not supervision %}active{% endif %}"
+       href="/admin{% if include_legacy %}?include_legacy=1{% endif %}">All</a>
+
+    <a class="chip {% if supervision %}active{% endif %}"
+       href="/admin?supervision=1{% if include_legacy %}&include_legacy=1{% endif %}">
+      Students &amp; interns
+    </a>
+
+    {% for key, label in departments.items() %}
+      {% if key != 'unassigned' or dept_counts.get(key) %}
+      <a class="chip {% if active_department == key %}active{% endif %}"
+         href="/admin?department={{ key }}{% if include_legacy %}&include_legacy=1{% endif %}">
+        {{ label }}<span class="c">{{ dept_counts.get(key, 0) }}</span>
+      </a>
+      {% endif %}
+    {% endfor %}
+
+    <a class="chip {% if include_legacy %}active{% endif %}"
+       href="/admin?{% if active_department %}department={{ active_department }}&{% endif %}{% if not include_legacy %}include_legacy=1{% endif %}">
+      {% if include_legacy %}Hide{% else %}Show{% endif %} legacy
+    </a>
+  </div>
+
+  <!-- Case list -->
+  {% if rows %}
+    {% for row in rows %}
+    <a class="case-row" href="/admin/cases/{{ row.case.id }}">
+      <div class="r1">
+        <span class="label">{{ row.case.patient_label or 'Unlabelled case' }}</span>
+        <span class="when">
+          {% if row.case.created_at %}{{ row.case.created_at.strftime('%d %b %Y, %H:%M') }}{% endif %}
+        </span>
+      </div>
+      <div class="r2">
+        {{ row.case.physio_name or 'Unknown' }}
+        &middot; {{ department_label(row.case.department) }}
+        &middot; {{ grade_label(row.case.grade) }}
+      </div>
+      <div class="tags">
+        {% if row.flags.red_flag %}
+          <span class="t red">Red flag &mdash; escalated</span>
+        {% endif %}
+        {% if row.flags.xray_indicated %}
+          <span class="t amber">X-ray indicated</span>
+        {% endif %}
+        {% if not row.flags.has_assessment %}
+          <span class="t grey">No assessment run</span>
+        {% elif not row.flags.red_flag and not row.flags.xray_indicated %}
+          <span class="t green">Safety screen passed</span>
+        {% endif %}
+        {% if row.flags.suggestion_pending %}
+          <span class="t grey">Agent running</span>
+        {% elif row.flags.has_suggestion %}
+          <span class="t">AI suggestion recorded</span>
+        {% endif %}
+        {% if row.case.legacy %}
+          <span class="t grey">Legacy</span>
+        {% endif %}
+      </div>
+    </a>
+    {% endfor %}
+  {% else %}
+    <div class="empty">
+      <p class="mb-1">No cases match this filter.</p>
+      <a href="/admin" class="small">Clear filters</a>
+    </div>
+  {% endif %}
+
+  {% endif %}
+
+  <!-- Roster -->
+  <div class="roster">
+    <h3>Physiotherapists</h3>
+    {% if physios %}
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Department</th>
+          <th class="hide-sm">Grade</th>
+          <th>Cases</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in physios %}
+        <tr>
+          <td>{{ p.full_name or p.email }}</td>
+          <td>{{ department_label(p.department) }}</td>
+          <td class="hide-sm">{{ grade_label(p.grade) }}</td>
+          <td>{{ p.case_count }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+      <p class="text-muted small">No physiotherapist accounts yet.</p>
+    {% endif %}
+  </div>
+
+</div>
+
+{% endblock %}
