@@ -93,7 +93,7 @@ def connect():
 
 
 def detect_link_field(cases):
-    sample = list(cases.find({}, limit=200))
+    sample = list(cases().find({}, limit=200))
     if not sample:
         return None, None
     present = Counter()
@@ -116,9 +116,9 @@ def inspect(db):
     print(f"\ndatabase: {DB_NAME}")
     print(f"collections present: {sorted(db.list_collection_names())}")
     print(f"\nusers: {users.count_documents({})}")
-    print(f"cases: {cases.count_documents({})}")
+    print(f"cases: {cases().count_documents({})}")
 
-    doc = cases.find_one()
+    doc = cases().find_one()
     if not doc:
         print("\nNo case documents.")
         return
@@ -137,9 +137,9 @@ def inspect(db):
     else:
         print("--> cases have NO owner field. This script will add one.")
 
-    unowned = cases.count_documents({"physio_uid": {"$exists": False}})
+    unowned = cases().count_documents({"physio_uid": {"$exists": False}})
     str_dates = sum(
-        1 for c in cases.find({}, {"created_at": 1})
+        1 for c in cases().find({}, {"created_at": 1})
         if isinstance(c.get("created_at"), str)
     )
     print(f"    cases without physio_uid: {unowned}")
@@ -198,7 +198,7 @@ def seed_user(db, apply, uid, email, name, department, grade, role):
 def claim_legacy_cases(db, apply, uid, name, department, grade):
     """Assign every ownerless case to one account, flagged legacy."""
     cases = db[CASES_COLLECTION]
-    unowned = list(cases.find({"physio_uid": {"$exists": False}}))
+    unowned = list(cases().find({"physio_uid": {"$exists": False}}))
 
     print(f"\nownerless cases: {len(unowned)}")
     if not unowned:
@@ -216,7 +216,7 @@ def claim_legacy_cases(db, apply, uid, name, department, grade):
         if converted:
             patch["created_at"] = converted
         if apply:
-            cases.update_one({"_id": case["_id"]}, {"$set": patch})
+            cases().update_one({"_id": case["_id"]}, {"$set": patch})
 
     verb = "claimed" if apply else "[dry run] would claim"
     print(f"  {verb} {len(unowned)} cases for {name}, flagged legacy: true")
@@ -227,11 +227,11 @@ def fix_remaining_dates(db, apply):
     """Catch any owned cases whose created_at is still a string."""
     cases = db[CASES_COLLECTION]
     fixed = 0
-    for case in cases.find({}, {"created_at": 1}):
+    for case in cases().find({}, {"created_at": 1}):
         converted = parse_created_at(case.get("created_at"))
         if converted:
             if apply:
-                cases.update_one(
+                cases().update_one(
                     {"_id": case["_id"]}, {"$set": {"created_at": converted}}
                 )
             fixed += 1
@@ -328,7 +328,7 @@ def main():
 
     if not (args.owner_uid or args.admin_uid):
         print("\nNo accounts given - nothing seeded.")
-        print("Pass --owner-uid / --owner-email / --owner-name to claim cases.")
+        print("Pass --owner-uid / --owner-email / --owner-name to claim cases.()")
 
     print("\ndone.")
 

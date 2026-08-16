@@ -1,13 +1,42 @@
 {% extends "case_workspace.html" %}
 {% block tab_content %}
 
+{#
+    ===============================================================
+    Case Summary
+    ===============================================================
+    Rendered on two routes:
+      /cases/{id}/summary        physiotherapist,   is_admin_view False
+      /admin/cases/{id}/summary  head of department, is_admin_view True
+
+    Under is_admin_view this page is STRICTLY read-only. Every control
+    that would cause the agent to run is suppressed, because running it
+    appends to agentLog and replaces assessment.agent_suggestion — a
+    supervisor opening a case would otherwise overwrite the record with
+    output the treating clinician never saw, and the audit trail would
+    stop representing the assessment as it was actually performed.
+
+    The buttons were previously ungated. admin.py's docstring stated
+    they were suppressed here; they were not.
+
+    Suppression in this template is presentation only. The server-side
+    guarantee is load_case_for_write() on /suggest and /suggest-async,
+    which rejects admin accounts with 403 regardless of what the page
+    renders. Both layers are needed: this one so the supervisor is not
+    shown a control that will fail, that one so it fails if they find it.
+#}
+
 <h2 class="h5 mb-3">Case Summary</h2>
 
 {% if not case.assessment %}
     <!-- no exam has been run yet -->
     <div class="alert alert-secondary">
-        No assessment has been run yet. Complete the
-        <a href="/cases/{{ case.id }}/exam">Exam</a> tab to run the safety screen.
+        {% if is_admin_view %}
+            No assessment has been recorded for this case.
+        {% else %}
+            No assessment has been run yet. Complete the
+            <a href="/cases/{{ case.id }}/exam">Exam</a> tab to run the safety screen.
+        {% endif %}
     </div>
 {% else %}
 
@@ -35,6 +64,9 @@
 
     <!-- ========================================================= -->
     <!-- SYSTEM CHECK: deterministic results (always shown)         -->
+    <!-- Shown identically to both roles. These are rule outputs,   -->
+    <!-- not model outputs, so there is nothing for a supervisor    -->
+    <!-- to disturb by reading them.                                -->
     <!-- ========================================================= -->
     <div class="card mb-3">
         <div class="card-header bg-light fw-bold">
@@ -72,6 +104,13 @@
             </p>
             <p class="small text-muted mb-0">{{ case.assessment.pittsburgh.rationale }}</p>
 
+            {% if case.assessment.screened_age %}
+            <p class="small text-muted mb-0 mt-2">
+                Rules evaluated against a recorded age of
+                {{ case.assessment.screened_age }}.
+            </p>
+            {% endif %}
+
         </div>
     </div>
 
@@ -93,6 +132,29 @@
                 <!-- suggestion already exists, just show it -->
                 <p class="mb-0" style="white-space: pre-wrap;">{{ case.assessment.agent_suggestion }}</p>
 
+            {% elif is_admin_view %}
+
+                {#
+                    Admin path stops here. Whatever the stored status is —
+                    pending, error, or never requested — the supervisor is
+                    shown the state of the record and given no control that
+                    would change it. No poller either: polling is harmless
+                    on its own, but the spinner would imply a run this page
+                    did not start and cannot finish.
+                #}
+                <p class="text-muted small mb-0">
+                    {% if case.assessment.agent_suggestion_status == 'pending' %}
+                        A suggestion is currently being generated for this case.
+                        Reload to see the result once the treating clinician's
+                        request completes.
+                    {% elif case.assessment.agent_suggestion_status == 'error' %}
+                        The reasoning agent returned an error on the last attempt.
+                        No suggestion is stored for this case.
+                    {% else %}
+                        No agent suggestion was requested for this case.
+                    {% endif %}
+                </p>
+
             {% elif case.assessment.agent_suggestion_status == 'pending' %}
 
                 <!-- agent is running in background - show spinner and start polling -->
@@ -101,33 +163,8 @@
                     <span>Reasoning agent running &mdash; this takes 1&ndash;2 minutes&hellip;</span>
                 </div>
                 <script>
-                    // addition 1 - poll every 5 seconds while agent runs in background
-                    const caseId = '{{ case.id }}';
-                    const pollInterval = setInterval(async function () {
-                        try {
-                            const response = await fetch('/cases/' + caseId + '/suggest-status');
-                            const data = await response.json();
-
-                            if (data.status === 'done' && data.suggestion) {
-                                clearInterval(pollInterval);
-                                // replace spinner with the suggestion text
-                                document.getElementById('suggestion-body').innerHTML =
-                                    '<p class="mb-0" style="white-space: pre-wrap;">'
-                                    + data.suggestion + '</p>';
-                            }
-
-                            if (data.status === 'error') {
-                                clearInterval(pollInterval);
-                                document.getElementById('suggestion-body').innerHTML =
-                                    '<p class="text-danger small mb-0">'
-                                    + 'Agent error &mdash; please try again.</p>';
-                            }
-
-                        } catch (err) {
-                            // network hiccup - keep polling, don't stop
-                            console.log('poll error, will retry:', err);
-                        }
-                    }, 5000);
+                    // addition 1 - resume polling for a run already in flight
+                    startSuggestionPolling('{{ case.id }}');
                 </script>
 
             {% elif case.assessment.agent_suggestion_status == 'error' %}
@@ -151,56 +188,163 @@
                     Get test suggestions
                 </button>
 
-                   
-            
             {% endif %}
 
         </div>
 
     </div>
- {% include "case_chat.html" %}
+
+    {#
+        The chat panel sends the case to the model and is gated as a
+        write server-side for the same audit reason as the suggestion
+        buttons. Not rendered for a supervisor.
+    #}
+    {% if not is_admin_view %}
+    {% include "case_chat.html" %}
+
     <!-- addition 2 - async suggestion request and polling logic -->
     <script>
-        async function requestSuggestion() {
-            const caseId = '{{ case.id }}';
+        // ------------------------------------------------------------
+        // Render the suggestion as TEXT, not as markup.
+        //
+        // These panels previously assigned model output straight into
+        // innerHTML. Any '<' in the suggestion is then parsed as the
+        // start of a tag and everything up to the next '>' disappears
+        // from the page — and this domain produces that character
+        // routinely: "flexion <90 degrees", "effusion <24h". The text
+        // was being silently truncated rather than displayed wrongly,
+        // which is the harder failure to notice.
+        //
+        // textContent also removes the injection path entirely. The
+        // suggestion is generated from retrieved corpus text and from
+        // free-text clinical notes, neither of which is trusted markup.
+        // ------------------------------------------------------------
+        function renderSuggestion(text) {
+            const body = document.getElementById('suggestion-body');
+            body.innerHTML = '';
+            const p = document.createElement('p');
+            p.className = 'mb-0';
+            p.style.whiteSpace = 'pre-wrap';
+            p.textContent = text;
+            body.appendChild(p);
+        }
 
-            // replace the button with a spinner immediately so the user
-            // knows something is happening
-            document.getElementById('suggestion-body').innerHTML =
+        function renderNotice(text, cssClass) {
+            const body = document.getElementById('suggestion-body');
+            body.innerHTML = '';
+            const p = document.createElement('p');
+            p.className = cssClass;
+            p.textContent = text;
+            body.appendChild(p);
+        }
+
+        function renderSpinner() {
+            const body = document.getElementById('suggestion-body');
+            body.innerHTML =
                 '<div class="d-flex align-items-center gap-2 text-muted small">'
                 + '<div class="spinner-border spinner-border-sm" role="status"></div>'
                 + '<span>Reasoning agent running &mdash; this takes 1&ndash;2 minutes&hellip;</span>'
                 + '</div>';
+        }
 
-            // kick off the background agent call - returns immediately
-            await fetch('/cases/' + caseId + '/suggest-async', { method: 'POST' });
+        // ------------------------------------------------------------
+        // addition 3 - polling with a ceiling and a single active timer
+        //
+        // The previous version polled every 5 seconds forever. If the
+        // background thread died, agent_suggestion_status stayed
+        // 'pending' and the spinner span ran indefinitely with no way
+        // for the clinician to tell a slow run from a dead one.
+        //
+        // A single module-level handle also prevents two pollers
+        // running at once, which happened when the page loaded in the
+        // pending state and the clinician then pressed Retry.
+        // ------------------------------------------------------------
+        const POLL_INTERVAL_MS = 5000;
+        const POLL_MAX_ATTEMPTS = 36;   // 3 minutes; the agent takes 1-2
 
-            // start polling every 5 seconds for the result
-            const pollInterval = setInterval(async function () {
+        let activePoll = null;
+
+        function startSuggestionPolling(caseId) {
+            if (activePoll !== null) {
+                clearInterval(activePoll);
+            }
+
+            let attempts = 0;
+
+            activePoll = setInterval(async function () {
+                attempts += 1;
+
+                if (attempts > POLL_MAX_ATTEMPTS) {
+                    clearInterval(activePoll);
+                    activePoll = null;
+                    renderNotice(
+                        'The reasoning agent did not return within three minutes. '
+                        + 'Reload the page to check, or request the suggestion again.',
+                        'text-danger small mb-0'
+                    );
+                    return;
+                }
+
                 try {
                     const response = await fetch('/cases/' + caseId + '/suggest-status');
                     const data = await response.json();
 
                     if (data.status === 'done' && data.suggestion) {
-                        clearInterval(pollInterval);
-                        document.getElementById('suggestion-body').innerHTML =
-                            '<p class="mb-0" style="white-space: pre-wrap;">'
-                            + data.suggestion + '</p>';
+                        clearInterval(activePoll);
+                        activePoll = null;
+                        renderSuggestion(data.suggestion);
                     }
 
                     if (data.status === 'error') {
-                        clearInterval(pollInterval);
-                        document.getElementById('suggestion-body').innerHTML =
-                            '<p class="text-danger small mb-0">'
-                            + 'Agent error &mdash; please try again.</p>';
+                        clearInterval(activePoll);
+                        activePoll = null;
+                        renderNotice(
+                            'Agent error — please try again.',
+                            'text-danger small mb-0'
+                        );
                     }
 
                 } catch (err) {
+                    // network hiccup - keep polling, don't stop
                     console.log('poll error, will retry:', err);
                 }
-            }, 5000);
+            }, POLL_INTERVAL_MS);
+        }
+
+        async function requestSuggestion() {
+            const caseId = '{{ case.id }}';
+
+            // show the spinner immediately so the clinician knows
+            // something is happening
+            renderSpinner();
+
+            // kick off the background agent call - returns immediately.
+            // A 403 here means the account is read-only; the button
+            // should not have rendered, so say so rather than spinning.
+            try {
+                const kickoff = await fetch('/cases/' + caseId + '/suggest-async',
+                                            { method: 'POST' });
+                if (!kickoff.ok) {
+                    renderNotice(
+                        'This account does not have permission to run the '
+                        + 'reasoning agent on this case.',
+                        'text-danger small mb-0'
+                    );
+                    return;
+                }
+            } catch (err) {
+                renderNotice(
+                    'Could not reach the server. Please try again.',
+                    'text-danger small mb-0'
+                );
+                return;
+            }
+
+            startSuggestionPolling(caseId);
         }
     </script>
+    {% endif %}
+
     {% endif %}
 
 {% endif %}

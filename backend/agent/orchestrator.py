@@ -406,6 +406,7 @@ def run_agent_only(query, safety_facts, physical_dict=None, investigations=None)
         + "\n\nCLINICIAN QUESTION: "
         + query
     )
+    print(f"[agent] full prompt ({len(full_prompt)} chars):\n{full_prompt}\n[/agent]")
 
 
     response = agent.invoke(

@@ -142,7 +142,7 @@ def build_investigation_context(case: Dict[str, Any]) -> str:
     imaging" from "imaging section not reached yet".
     """
     visible = visible_investigations(case)
-    withheld = len(pending_verification(case)) + len(problem_investigations(case))
+    withheld = len(pending_verification(case))
 
     lines: List[str] = ["PRIOR INVESTIGATIONS"]
 

@@ -14,6 +14,51 @@ registered first.
 The deterministic safety layer (Ottawa, Pittsburgh, red flags, neuro
 trigger) never touches the LLM. The agent runs only after that layer
 has passed.
+
+Access control
+--------------
+Every route touching a case goes through backend.case_access. Checking
+only that a valid Firebase token exists - which is what this file did
+previously - authenticates the caller but authorises nothing. See the
+deviation register below, D6.
+
+=====================================================================
+DEVIATIONS FROM PaaS SCAFFOLD  (Examples 07-10, main.py)
+=====================================================================
+D1  Scaffold is one main.py holding every route. Cygnus mounts three
+    APIRouters (physical, admin, investigations) from a backend/
+    package. Retained from the scaffold: FastAPI(), app.mount for
+    static, Jinja2Templates(directory=...), starlette.status for
+    redirect codes, and `form = await request.form()` for POST bodies.
+
+D2  Scaffold defines validateFirebaseToken() and getUser() inline in
+    every file. Cygnus imports both from backend/auth.py.
+
+D3  Scaffold hardcodes the MongoDB URI with a live password in source
+    (Example09 line 16). Cygnus reads MONGO_URI from the environment
+    in store.py. Committing a credential is not defensible for a
+    system holding clinical data.
+
+D5  Scaffold uses camelCase route handlers (uploadFile, filterByRange).
+    Cygnus uses snake_case per PEP 8.
+
+D6  Scaffold enforces ownership by scoping the query - Example07 does
+    find_one({'user_id': user_token['user_id']}) and so cannot return
+    another user's document. Cygnus applies the same principle through
+    case_access.load_case_for_read/write, which additionally permits a
+    head-of-department read that a single scoped query cannot express.
+
+D7  Scaffold returns RedirectResponse('/') on any auth failure. Cygnus
+    raises HTTPException and registers a handler (addition 2 below)
+    that converts 401 into the redirect for page requests. 403 and 404
+    keep their real status codes so the distinction survives into logs.
+
+D8  Scaffold has no read/write role split. Cygnus rejects admin writes.
+
+D10 Scaffold has no CORS middleware at all. Cygnus previously set
+    allow_origins=["*"]; now restricted (addition 1). Every fetch() in
+    this application is same-origin, so nothing needs the wildcard.
+=====================================================================
 """
 
 from dotenv import load_dotenv
@@ -26,10 +71,20 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from fastapi.exception_handlers import http_exception_handler
+from starlette.exceptions import HTTPException as StarletteHTTPException
 import starlette.status as status
 
 from backend import store
-from backend.auth import get_user, validate_firebase_token, get_current_user
+from backend.auth import get_current_user
+
+# Ownership and role gate — every case route passes through here
+from backend.case_access import (
+    load_case_for_read,
+    load_case_for_write,
+    try_load_case_for_read,
+    try_load_case_for_write,
+)
 
 # Deterministic safety layer — pure Python, no LLM
 from backend.rules.ottawa import apply_ottawa_knee_rule, OttawaInput
@@ -40,15 +95,12 @@ from backend.safety.red_flags import screen_red_flags, RedFlagInput
 from backend.agent.orchestrator import run_agent_only
 
 # Physical examination router (owns all /physical routes)
-
 from backend.physical_backend import router as physical_router
 
 from backend.investigation_routes import router as investigation_router
 
-
 # Admin router (read-only head-of-department oversight)
 from backend.admin import router as admin_router
-
 
 
 app = FastAPI(
@@ -57,12 +109,21 @@ app = FastAPI(
     version="0.1.0",
 )
 
-app.include_router(physical_router)
-app.include_router(admin_router)
-app.include_router(investigation_router)
+# -------------------------------------------------------------------
+# addition 1 - https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CORS
+
+# CORS. Previously allow_origins=["*"], which is wider than anything
+# this application needs: the UI is server-rendered Jinja2 and every
+# fetch() call in case_summary.html is same-origin. Restricting costs
+# nothing. If you later serve the frontend from a separate host, add
+# that origin to this list rather than restoring the wildcard.
+# -------------------------------------------------------------------
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+    ],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -86,11 +147,42 @@ templates = Jinja2Templates(directory="frontend/templates")
 # -------------------------------------------------------------------
 templates.env.finalize = lambda value: "" if value is None else value
 
-# Shared with the physical router, which reads them off app.state
+# Shared with the physical router, which reads them off app.state.
+# These must be set BEFORE include_router runs.
 app.state.templates = templates
 app.state.store = store
 
+# -------------------------------------------------------------------
+# Routers are mounted once, here, after app.state is populated.
+# physical_router was previously included twice - once before this
+# block and once after - which registered every /physical route twice
+# and duplicated them in /docs.
+# -------------------------------------------------------------------
 app.include_router(physical_router)
+app.include_router(admin_router)
+app.include_router(investigation_router)
+
+
+# -------------------------------------------------------------------
+# addition 2
+# Auth failures reach the browser as a redirect, not a JSON 401.
+#
+# case_access raises HTTPException so that a signed-out user (401), a
+# supervisor attempting a write (403) and a case that is absent or not
+# theirs (404) stay distinguishable in the server log. For a page
+# request a bare 401 body is useless, so it becomes the redirect to
+# /login that the scaffold performs directly. Anything that is not a
+# 401 - and any request that did not ask for HTML, such as the polling
+# endpoints - falls through to FastAPI's default handler and keeps its
+# real status code.
+# -------------------------------------------------------------------
+@app.exception_handler(StarletteHTTPException)
+async def auth_failure_redirect(request: Request, exc: StarletteHTTPException):
+    wants_html = "text/html" in request.headers.get("accept", "")
+    if exc.status_code == 401 and wants_html:
+        return RedirectResponse("/login", status_code=status.HTTP_302_FOUND)
+    return await http_exception_handler(request, exc)
+
 
 # ===================================================================
 # Helpers — agent input construction
@@ -256,6 +348,7 @@ def _build_agent_query(case: dict) -> str:
     query += "Which special tests should be prioritised and in what order?"
     return query
 
+
 # ===================================================================
 # Page routes
 # ===================================================================
@@ -280,6 +373,10 @@ async def index(request: Request):
 
 @app.post("/cases/new")
 async def new_case_submit(request: Request):
+    """
+    Creation is the one write with no existing case to check ownership
+    against, so the role check is inline rather than via case_access.
+    """
     user = get_current_user(request)
     if not user:
         return RedirectResponse("/login")
@@ -288,27 +385,35 @@ async def new_case_submit(request: Request):
             status_code=403,
             detail="Head of department accounts have read-only access",
         )
+
     form = await request.form()
-    store.create_case(form["patient_label"], user)
-    return RedirectResponse("/", status_code=303)
+
+    patient_label = (form.get("patient_label") or "").strip()
+    if not patient_label:
+        return templates.TemplateResponse(
+            request, "new_case.html",
+            {"error_message": "A patient label is required."},
+        )
+
+    store.create_case(patient_label, user)
+    return RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.get("/cases/new")
 async def new_case_form(request: Request):
-    if not get_user(request):
+    user = get_current_user(request)
+    if not user:
         return RedirectResponse("/login")
-    return templates.TemplateResponse(request, "new_case.html")
+    return templates.TemplateResponse(
+        request, "new_case.html", {"error_message": None},
+    )
 
 
 @app.get("/cases/{case_id}")
 async def view_case(request: Request, case_id: str):
-    if not get_user(request):
-        return RedirectResponse("/login")
-
-    case = store.get_case(case_id)
-    if not case:
-        raise HTTPException(status_code=404, detail="Case not found")
-
+    # Loaded rather than merely existence-checked: entering the case at
+    # all is what is being authorised here.
+    load_case_for_read(request, case_id)
     return RedirectResponse(f"/cases/{case_id}/history")
 
 
@@ -318,27 +423,22 @@ async def view_case(request: Request, case_id: str):
 
 @app.get("/cases/{case_id}/history")
 async def case_history(request: Request, case_id: str):
-    if not get_user(request):
-        return RedirectResponse("/login")
-
-    case = store.get_case(case_id)
-    if not case:
-        raise HTTPException(status_code=404, detail="Case not found")
+    user, case = load_case_for_read(request, case_id)
 
     return templates.TemplateResponse(
         request, "case_history.html",
-        {"case": case, "active_tab": "history"},
+        {
+            "case": case,
+            "active_tab": "history",
+            "user": user,
+            "is_admin_view": False,
+        },
     )
 
 
 @app.post("/cases/{case_id}/history", response_class=RedirectResponse)
 async def case_history_submit(request: Request, case_id: str):
-    if not get_user(request):
-        return RedirectResponse("/login")
-
-    case = store.get_case(case_id)
-    if not case:
-        raise HTTPException(status_code=404, detail="Case not found")
+    user, case = load_case_for_write(request, case_id)
 
     form = await request.form()
 
@@ -386,21 +486,22 @@ async def case_history_submit(request: Request, case_id: str):
 
 
 # -------------------------------------------------------------------
-# Exam tab (GET — the POST is in Part 4)
+# Exam tab (GET — the POST is in the second half of this file)
 # -------------------------------------------------------------------
 
 @app.get("/cases/{case_id}/exam")
 async def case_exam(request: Request, case_id: str):
-    if not get_user(request):
-        return RedirectResponse("/login")
-
-    case = store.get_case(case_id)
-    if not case:
-        raise HTTPException(status_code=404, detail="Case not found")
+    user, case = load_case_for_read(request, case_id)
 
     return templates.TemplateResponse(
         request, "case_exam.html",
-        {"case": case, "active_tab": "exam"},
+        {
+            "case": case,
+            "active_tab": "exam",
+            "user": user,
+            "is_admin_view": False,
+            "error_message": None,
+        },
     )
 
 
@@ -410,31 +511,43 @@ async def case_exam(request: Request, case_id: str):
 
 @app.get("/cases/{case_id}/summary")
 async def case_summary(request: Request, case_id: str):
-    if not get_user(request):
-        return RedirectResponse("/login")
-
-    case = store.get_case(case_id)
-    if not case:
-        raise HTTPException(status_code=404, detail="Case not found")
+    """
+    is_admin_view is passed explicitly as False here so the template has
+    a defined value on both paths. admin.py passes True for the same
+    template; without this the flag was Undefined on the physiotherapist
+    route, and `{% if not is_admin_view %}` would have been silently
+    true-by-accident rather than true-by-decision.
+    """
+    user, case = load_case_for_read(request, case_id)
 
     return templates.TemplateResponse(
         request, "case_summary.html",
-        {"case": case, "active_tab": "summary"},
+        {
+            "case": case,
+            "active_tab": "summary",
+            "user": user,
+            "is_admin_view": False,
+        },
     )
-
-
-# -------------------------------------------------------------------
+# ===================================================================
 # Chat — synchronous RAG, single retrieval + single LLM call
-# -------------------------------------------------------------------
+# ===================================================================
 
 @app.post("/cases/{case_id}/chat")
 async def case_chat(request: Request, case_id: str):
-    if not get_user(request):
-        return {"error": "not authenticated"}
+    """
+    Answers JSON, so this uses the non-raising loader and shapes its own
+    error body rather than letting the 401 handler redirect it.
 
-    case = store.get_case(case_id)
+    Gated as a WRITE even though it stores nothing. Chat sends the case
+    to the model, and a head-of-department account questioning the agent
+    about a junior's case would generate model output attached to that
+    case which the treating clinician never saw. Read-only oversight has
+    to mean the supervisor observes the record rather than extending it.
+    """
+    user, case = try_load_case_for_write(request, case_id)
     if not case:
-        return {"error": "case not found"}
+        return {"error": "not authorised"}
 
     form = await request.form()
     message = (form.get("message") or "").strip()
@@ -452,36 +565,30 @@ async def case_chat(request: Request, case_id: str):
     return {"response": response}
 
 
-# -------------------------------------------------------------------
+# ===================================================================
 # Health / status
-# -------------------------------------------------------------------
+# ===================================================================
 
 @app.get("/api/status")
 async def api_status():
-    return {"status": "ok", "message": "Knee CDS API running"}
+    return {"status": "ok"}
 
 
 @app.get("/health")
 async def health():
     return {"status": "healthy"}
 
+
 # ===================================================================
 # POST /cases/{case_id}/exam
 # -------------------------------------------------------------------
 # The deterministic safety layer. Ottawa, Pittsburgh and the red-flag
-# screen run here as pure Python with no LLM involvement whatsoever.
-# A positive red flag halts the pathway before any hands-on assessment
-# and before the agent is ever invoked.
+# screen run here as pure Python. No model is called on this path.
 # ===================================================================
 
 @app.post("/cases/{case_id}/exam", response_class=RedirectResponse)
 async def case_exam_submit(request: Request, case_id: str):
-    if not get_user(request):
-        return RedirectResponse("/login")
-
-    case = store.get_case(case_id)
-    if not case:
-        raise HTTPException(status_code=404, detail="Case not found")
+    user, case = load_case_for_write(request, case_id)
 
     form = await request.form()
 
@@ -489,12 +596,75 @@ async def case_exam_submit(request: Request, case_id: str):
         """An unchecked checkbox is absent from the form entirely."""
         return field_name in form
 
-    # Age arrives as a string. A blank or malformed value becomes 0,
-    # which fails the Ottawa age criterion closed rather than open.
-    try:
-        age = int(form.get("age", "0"))
-    except ValueError:
-        age = 0
+    # ---------------------------------------------------------------
+    # addition 3
+    # Age is REQUIRED. It is not defaulted.
+    #
+    # This previously read:
+    #
+    #     try:
+    #         age = int(form.get("age", "0"))
+    #     except ValueError:
+    #         age = 0
+    #
+    # with a comment claiming that fell closed rather than open. It did
+    # the opposite, and in two different directions at once:
+    #
+    #   Ottawa's age criterion is >= 55. An age of 0 does not meet it,
+    #   so a blank field silently DROPS the criterion. A missing age on
+    #   a 78-year-old produced "Ottawa negative" and no X-ray referral.
+    #   That is failing open on a fracture rule.
+    #
+    #   Pittsburgh's age criterion is < 12 or > 50. An age of 0 DOES
+    #   meet it, so the same blank field fires Pittsburgh as a false
+    #   positive.
+    #
+    # A safety layer that substitutes a value for one a clinician did
+    # not enter is asserting a clinical fact it does not have. The only
+    # defensible behaviour is to refuse the submission. The `required`
+    # attribute on the input is browser-side convenience, not a
+    # guarantee - it is absent on any request that does not come from
+    # that form.
+    #
+    # NOTE: this re-render does not repopulate the checkboxes already
+    # ticked. Documented limitation; the path is reachable only when the
+    # browser control is bypassed.
+    # ---------------------------------------------------------------
+    raw_age = (form.get("age") or "").strip()
+
+    if not raw_age.isdigit():
+        return templates.TemplateResponse(
+            request, "case_exam.html",
+            {
+                "case": case,
+                "active_tab": "exam",
+                "user": user,
+                "is_admin_view": False,
+                "error_message": (
+                    "Patient age is required and must be a whole number. "
+                    "The fracture rules cannot be applied without it."
+                ),
+            },
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    age = int(raw_age)
+
+    if age > 120:
+        return templates.TemplateResponse(
+            request, "case_exam.html",
+            {
+                "case": case,
+                "active_tab": "exam",
+                "user": user,
+                "is_admin_view": False,
+                "error_message": (
+                    f"Patient age of {age} is outside the plausible range. "
+                    "Please check and re-enter."
+                ),
+            },
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
 
     # --- red-flag screen input ---
     red_flag_input = RedFlagInput(
@@ -575,7 +745,8 @@ async def case_exam_submit(request: Request, case_id: str):
         f"/cases/{case_id}/physical",
         status_code=status.HTTP_302_FOUND,
     )
-    
+
+
 # ===================================================================
 # POST /cases/{case_id}/suggest
 # -------------------------------------------------------------------
@@ -586,12 +757,14 @@ async def case_exam_submit(request: Request, case_id: str):
 
 @app.post("/cases/{case_id}/suggest", response_class=RedirectResponse)
 async def case_suggest(request: Request, case_id: str):
-    if not get_user(request):
-        return RedirectResponse("/login")
-
-    case = store.get_case(case_id)
-    if not case:
-        raise HTTPException(status_code=404, detail="Case not found")
+    """
+    Gated as a WRITE. Running the agent appends to agentLog and replaces
+    assessment.agent_suggestion, so a supervisor triggering it would
+    overwrite the record with output the treating clinician never saw -
+    the audit trail would then no longer represent the assessment as
+    performed.
+    """
+    user, case = load_case_for_write(request, case_id)
 
     assessment = case.get("assessment")
 
@@ -609,7 +782,9 @@ async def case_suggest(request: Request, case_id: str):
 
     print(f"[suggest] query:\n{query}")
 
-    result = run_agent_only(query, safety_facts, case.get("physical"), case.get("investigations"))
+    result = run_agent_only(
+        query, safety_facts, case.get("physical"), case.get("investigations")
+    )
 
     # Append-only audit log: query, retrieved chunks, and output.
     # This is the chain that makes the reasoning traceable.
@@ -617,6 +792,7 @@ async def case_suggest(request: Request, case_id: str):
         "query": query,
         "retrieved": result["retrieved"],
         "suggestion": result["suggestion"],
+        "generated_by_uid": user.get("uid"),
     })
 
     assessment["agent_suggestion"] = result["suggestion"]
@@ -639,12 +815,11 @@ async def case_suggest(request: Request, case_id: str):
 
 @app.post("/cases/{case_id}/suggest-async")
 async def case_suggest_async(request: Request, case_id: str):
-    if not get_user(request):
-        return {"status": "error", "message": "not authenticated"}
-
-    case = store.get_case(case_id)
+    # JSON endpoint, so use the non-raising loader. Write-gated for the
+    # same audit-trail reason as /suggest above.
+    user, case = try_load_case_for_write(request, case_id)
     if not case:
-        return {"status": "error", "message": "case not found"}
+        return {"status": "error", "message": "not authorised"}
 
     assessment = case.get("assessment")
 
@@ -653,6 +828,17 @@ async def case_suggest_async(request: Request, case_id: str):
         return {"status": "no_assessment"}
     if assessment.get("red_flag_positive"):
         return {"status": "red_flag_halted"}
+
+    # ---------------------------------------------------------------
+    # addition 4
+    # Refuse to start a second run while one is in flight. Two threads
+    # racing on the same case both write to agentLog and both write
+    # agent_suggestion, so the stored suggestion could end up being the
+    # older of the two runs. The UI can double-fire this by reloading
+    # the summary page while the spinner is showing.
+    # ---------------------------------------------------------------
+    if assessment.get("agent_suggestion_status") == "pending":
+        return {"status": "pending"}
 
     # Only skip regeneration if the stored suggestion was built from
     # exactly the data currently in the case. Saving any physical
@@ -668,6 +854,14 @@ async def case_suggest_async(request: Request, case_id: str):
     safety_facts = _build_safety_facts(assessment, case.get("history"))
     query = _build_agent_query(case)
 
+    # Snapshots taken deliberately at request time, alongside the query
+    # that was built from them. The agent must reason over one coherent
+    # picture of the case; re-reading these inside the thread would let
+    # the model see physical findings the query never described.
+    physical_snapshot = case.get("physical")
+    investigations_snapshot = case.get("investigations")
+    author_uid = user.get("uid")
+
     print(f"[suggest-async] query:\n{query}")
 
     # Mark pending so the UI shows the spinner immediately
@@ -675,21 +869,24 @@ async def case_suggest_async(request: Request, case_id: str):
     store.save_assessment(case_id, assessment)
 
     def run_in_background():
-        # Re-read the assessment inside the thread rather than closing
-        # over the outer dict. The outer copy is a snapshot taken before
-        # the model ran; writing it back would silently discard anything
-        # saved to the case while the agent was working.
+        # The RESULT is written against a freshly read assessment rather
+        # than the snapshot above, so anything saved to the case while
+        # the model was working is not silently discarded. Only the
+        # agent's own three fields are overwritten.
         try:
-            result = run_agent_only(query, safety_facts, case.get("physical"), case.get("investigations"))
-
-            fresh = store.get_case(case_id)
-            current = fresh.get("assessment", {}) if fresh else {}
+            result = run_agent_only(
+                query, safety_facts, physical_snapshot, investigations_snapshot
+            )
 
             store.append_agent_log(case_id, {
                 "query": query,
                 "retrieved": result["retrieved"],
                 "suggestion": result["suggestion"],
+                "generated_by_uid": author_uid,
             })
+
+            fresh = store.get_case(case_id)
+            current = fresh.get("assessment", {}) if fresh else {}
 
             current["agent_suggestion"] = result["suggestion"]
             current["agent_suggestion_fingerprint"] = current_fingerprint
@@ -716,16 +913,15 @@ async def case_suggest_async(request: Request, case_id: str):
 
 @app.get("/cases/{case_id}/suggest-status")
 async def case_suggest_status(request: Request, case_id: str):
-    if not get_user(request):
-        return {"status": "error", "message": "not authenticated"}
-
-    case = store.get_case(case_id)
+    # Read-gated: a supervisor may observe a run in progress, they just
+    # may not have started it.
+    user, case = try_load_case_for_read(request, case_id)
     if not case:
-        return {"status": "error", "message": "case not found"}
+        return {"status": "error", "message": "not authorised"}
 
     assessment = case.get("assessment", {})
 
     return {
         "status": assessment.get("agent_suggestion_status", "idle"),
         "suggestion": assessment.get("agent_suggestion", ""),
-    }    
+    }

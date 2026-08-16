@@ -15,19 +15,61 @@ The neuro trigger is imported, never redefined. It is part of the
 deterministic safety layer and has its own unit test suite; a second
 copy living in this file meant the tested implementation was not the
 one running.
+
+Access control
+--------------
+The router previously carried Depends(require_user), which established
+that the caller was signed in and nothing further. Any physiotherapist
+could read or overwrite any other physiotherapist's examination findings
+by knowing the case id, and a head-of-department account could write to
+records it is only meant to observe. Each route now loads the case
+through backend.case_access instead, which checks the case belongs to
+the caller and, on the five POSTs, that the caller is not an admin.
+
+=====================================================================
+DEVIATIONS FROM PaaS SCAFFOLD  (Examples 07-10, main.py)
+=====================================================================
+D1  Scaffold has no routers - every route hangs off app in main.py.
+    This file is an APIRouter mounted by main.py so the five
+    examination sections stay together with the field contracts they
+    depend on. Retained from the scaffold: `form = await
+    request.form()`, RedirectResponse with starlette.status codes, and
+    templates.TemplateResponse for rendering.
+
+D2  Scaffold repeats validateFirebaseToken() inline per file. This
+    router does no token handling of its own; it delegates entirely to
+    backend/case_access.py.
+
+D5  Scaffold uses camelCase handlers. snake_case here per PEP 8, with
+    the single exception of formatPhysicalForAgent, which is imported
+    from a module that predates that convention and is left alone
+    rather than renamed mid-project.
+
+D6  Scaffold enforces ownership inside the query itself. Here the case
+    is loaded and then judged, because read access extends to admins
+    and write access does not - see case_access.py.
+
+D11 Scaffold reads its collections from module-level globals. This
+    router reads store and templates off request.app.state, set by
+    main.py before include_router. That indirection exists so the
+    router can be mounted without importing main and creating a cycle.
+    Deliberate, but it is why the two must be assigned before mounting.
+=====================================================================
 """
 
-from fastapi import APIRouter, Request, HTTPException, Depends
+from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import RedirectResponse
 import starlette.status as status
 
-from backend.auth import require_user
+from backend.case_access import load_case_for_read, load_case_for_write
 from backend.safety.neuro_trigger import check_neuro_trigger, check_inhibition
 from backend.agent.physical_context import formatPhysicalForAgent
-# Auth applies to every route on this router. Physical examination
-# routes previously had no token validation at all, leaving clinical
-# findings readable and writable by anyone holding a case id.
-router = APIRouter(dependencies=[Depends(require_user)])
+
+# No router-level Depends. Authorisation is per-route because read and
+# write differ: a head of department may view an examination but must
+# not alter one, and a single router-wide dependency cannot express
+# that distinction.
+router = APIRouter()
 
 
 # ===================================================================
@@ -157,6 +199,7 @@ def _merge_physical_section(
     form: dict,
     section_fields: list,
     store,
+    case: dict,
     boolean_fields: list | None = None,
     int_fields: list | None = None,
     is_neuro_section: bool = False,
@@ -167,13 +210,14 @@ def _merge_physical_section(
 
     Only fields belonging to this section are touched. Everything
     recorded on the other four pages is left alone.
+
+    The case is passed in rather than re-fetched. It has already been
+    loaded and authorised by the calling route, and loading it a second
+    time here would mean the document written to is not necessarily the
+    document that was checked.
     """
     boolean_fields = boolean_fields or []
     int_fields = int_fields or []
-
-    case = store.get_case(case_id)
-    if case is None:
-        raise HTTPException(status_code=404, detail="Case not found")
 
     physical = case.get("physical") or {}
 
@@ -248,21 +292,30 @@ def _merge_physical_section(
     return physical
 
 
-
-
-
 # ===================================================================
 # Routes
 # ===================================================================
 
 def _render(request: Request, template: str, case_id: str):
-    """Shared page render — every GET below is the same three steps."""
-    store = request.app.state.store
-    case = store.get_case(case_id)
-    if case is None:
-        raise HTTPException(status_code=404, detail="Case not found")
+    """
+    Shared page render — every GET below is the same three steps.
+
+    load_case_for_read raises 401/404 rather than returning None, so
+    the previous explicit `if case is None` check is now redundant:
+    an unauthorised or absent case never reaches the render.
+    """
+    user, case = load_case_for_read(request, case_id)
     return request.app.state.templates.TemplateResponse(
-        request, template, {"case": case, "active_tab": "physical"},
+        request, template,
+        {
+            "case": case,
+            "active_tab": "physical",
+            "user": user,
+            # False rather than absent: admin.py renders these same
+            # templates with True, and an Undefined flag makes
+            # `{% if not is_admin_view %}` true by accident.
+            "is_admin_view": False,
+        },
     )
 
 
@@ -292,6 +345,7 @@ async def physical_edit_observation(request: Request, case_id: str):
 @router.post("/cases/{case_id}/physical/edit/observation",
              response_class=RedirectResponse)
 async def physical_save_observation(request: Request, case_id: str):
+    user, case = load_case_for_write(request, case_id)
     form = dict(await request.form())
     _merge_physical_section(
         case_id, form,
@@ -308,6 +362,7 @@ async def physical_save_observation(request: Request, case_id: str):
         ],
         boolean_fields=BOOLEAN_FIELDS["observation"],
         store=request.app.state.store,
+        case=case,
     )
     return _back_to_summary(case_id)
 
@@ -323,6 +378,7 @@ async def physical_edit_rom(request: Request, case_id: str):
 @router.post("/cases/{case_id}/physical/edit/rom",
              response_class=RedirectResponse)
 async def physical_save_rom(request: Request, case_id: str):
+    user, case = load_case_for_write(request, case_id)
     form = dict(await request.form())
     _merge_physical_section(
         case_id, form,
@@ -338,6 +394,7 @@ async def physical_save_rom(request: Request, case_id: str):
         boolean_fields=BOOLEAN_FIELDS["rom"],
         int_fields=INT_FIELDS["rom"],
         store=request.app.state.store,
+        case=case,
     )
     return _back_to_summary(case_id)
 
@@ -353,6 +410,7 @@ async def physical_edit_mmt(request: Request, case_id: str):
 @router.post("/cases/{case_id}/physical/edit/mmt",
              response_class=RedirectResponse)
 async def physical_save_mmt(request: Request, case_id: str):
+    user, case = load_case_for_write(request, case_id)
     form = dict(await request.form())
     _merge_physical_section(
         case_id, form,
@@ -370,6 +428,7 @@ async def physical_save_mmt(request: Request, case_id: str):
             "mmt_notes",
         ],
         store=request.app.state.store,
+        case=case,
     )
     return _back_to_summary(case_id)
 
@@ -385,6 +444,7 @@ async def physical_edit_special(request: Request, case_id: str):
 @router.post("/cases/{case_id}/physical/edit/special",
              response_class=RedirectResponse)
 async def physical_save_special(request: Request, case_id: str):
+    user, case = load_case_for_write(request, case_id)
     form = dict(await request.form())
     _merge_physical_section(
         case_id, form,
@@ -398,6 +458,7 @@ async def physical_save_special(request: Request, case_id: str):
             "test_patellar_apprehension", "special_tests_notes",
         ],
         store=request.app.state.store,
+        case=case,
     )
     return _back_to_summary(case_id)
 
@@ -413,6 +474,7 @@ async def physical_edit_neuro(request: Request, case_id: str):
 @router.post("/cases/{case_id}/physical/edit/neuro",
              response_class=RedirectResponse)
 async def physical_save_neuro(request: Request, case_id: str):
+    user, case = load_case_for_write(request, case_id)
     form = dict(await request.form())
     _merge_physical_section(
         case_id, form,
@@ -427,6 +489,7 @@ async def physical_save_neuro(request: Request, case_id: str):
         # Recording the screen is requesting it — see the merge helper.
         is_neuro_section=True,
         store=request.app.state.store,
+        case=case,
     )
     return _back_to_summary(case_id)
 
@@ -437,8 +500,6 @@ async def physical_save_neuro(request: Request, case_id: str):
 # ------------------------------------------------------------------
 @router.get("/api/cases/{case_id}/physical/agent-context")
 async def physical_agent_context(request: Request, case_id: str):
-    store = request.app.state.store
-    case = store.get_case(case_id)
-    if case is None:
-        raise HTTPException(status_code=404, detail="Case not found")
+    user, case = load_case_for_read(request, case_id)
     return {"agent_context": formatPhysicalForAgent(case.get("physical") or {})}
+

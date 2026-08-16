@@ -1,6 +1,26 @@
 {% extends "case_workspace.html" %}
 {% block tab_content %}
 
+{#
+    ===============================================================
+    Special Tests
+    ===============================================================
+    Each test carries one of four states. Previously there were three
+    chips and the hidden input defaulted to 'not_done', so every one of
+    the fourteen tests posted 'not_done' whether or not the clinician
+    had looked at it - the value could not distinguish a considered
+    decision from an unvisited row.
+
+      (nothing selected)  never addressed. Surfaced as outstanding.
+      Not indicated       considered, does not apply. Closed.
+      Deferred            indicated, not performed. Needs a reason.
+      Negative / Positive recorded result.
+
+    The reason radios appear only under Deferred, and collapse to a
+    single line once chosen. Four of the five reasons carry a retry
+    condition; patient_declined deliberately does not.
+#}
+
 <style>
   .phys-edit { max-width: 720px; margin: 0 auto; padding-bottom: 100px; }
 
@@ -34,16 +54,19 @@
 
   /* Special test row */
   .special-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
     padding: 0.75rem 0;
     border-bottom: 1px solid var(--bs-border-color-translucent, rgba(0,0,0,0.06));
-    min-height: 56px;
-    gap: 1rem;
   }
   .special-row:last-child { border-bottom: none; padding-bottom: 0; }
   .special-row:first-child { padding-top: 0; }
+
+  .special-main {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 56px;
+    gap: 1rem;
+  }
 
   .special-info { flex: 1; min-width: 0; }
   .special-name {
@@ -61,21 +84,28 @@
   }
 
   .chip {
-    padding: 0.45rem 0.75rem;
+    padding: 0.45rem 0.7rem;
     border-radius: 0.5rem;
     border: 1px solid var(--bs-border-color, #dee2e6);
-    font-size: 0.8rem; cursor: pointer;
+    font-size: 0.78rem; cursor: pointer;
     background: transparent; color: var(--bs-secondary, #6c757d);
     transition: all 0.12s ease; user-select: none;
     min-height: 36px; display: flex; align-items: center;
+    white-space: nowrap;
     font-weight: 500;
   }
   .chip:hover { background: var(--bs-tertiary-bg, #f8f9fa); }
   .chip:active { transform: scale(0.95); }
 
-  .chip.active.nd {
+  /* Not indicated - muted. A closed decision, not a finding. */
+  .chip.active.ni {
     background: var(--bs-secondary, #6c757d); color: #fff;
     border-color: var(--bs-secondary, #6c757d);
+  }
+  /* Deferred - amber. Outstanding, deliberately distinct from a result. */
+  .chip.active.def {
+    background: var(--bs-warning, #ffc107); color: #000;
+    border-color: var(--bs-warning, #ffc107);
   }
   .chip.active.neg {
     background: var(--bs-success, #198754); color: #fff;
@@ -85,6 +115,71 @@
     background: var(--bs-danger, #dc3545); color: #fff;
     border-color: var(--bs-danger, #dc3545);
   }
+
+  /* ---- Deferral reason block ---------------------------------- */
+  .defer-block {
+    display: none;
+    margin-top: 0.75rem;
+    padding: 0.75rem;
+    border-radius: 0.5rem;
+    border: 1px solid var(--bs-warning-border-subtle, #ffe69c);
+    background: var(--bs-warning-bg-subtle, #fff9e6);
+  }
+  .defer-block.open { display: block; }
+
+  .defer-block .defer-label {
+    font-size: 0.78rem; font-weight: 600;
+    margin-bottom: 0.5rem;
+    color: var(--bs-body-color, #212529);
+  }
+
+  .defer-reasons {
+    display: flex; flex-direction: column; gap: 0.35rem;
+    margin-bottom: 0.65rem;
+  }
+  .defer-reason {
+    display: flex; align-items: center; gap: 0.5rem;
+    padding: 0.5rem 0.65rem;
+    border-radius: 0.4rem;
+    border: 1px solid var(--bs-border-color, #dee2e6);
+    background: var(--bs-body-bg, #fff);
+    font-size: 0.82rem; cursor: pointer;
+    min-height: 42px;
+  }
+  .defer-reason input { margin: 0; flex-shrink: 0; }
+  .defer-reason:hover { background: var(--bs-tertiary-bg, #f8f9fa); }
+
+  /* Collapsed summary line, shown once a reason is chosen */
+  .defer-chosen {
+    display: none;
+    align-items: center; justify-content: space-between;
+    gap: 0.5rem; margin-top: 0.5rem;
+    font-size: 0.8rem;
+  }
+  .defer-chosen.open { display: flex; }
+  .defer-chosen .defer-chosen-text { flex: 1; min-width: 0; }
+  .defer-chosen .defer-retry {
+    display: block;
+    font-size: 0.72rem; color: var(--bs-secondary, #6c757d);
+    font-weight: 400;
+  }
+  .defer-change {
+    border: none; background: transparent;
+    color: var(--bs-primary, #0d6efd);
+    font-size: 0.78rem; text-decoration: underline;
+    padding: 0.25rem 0.4rem; cursor: pointer; flex-shrink: 0;
+  }
+
+  .defer-note {
+    width: 100%; min-height: 52px;
+    padding: 0.5rem 0.65rem;
+    border: 1px solid var(--bs-border-color, #dee2e6);
+    border-radius: 0.4rem;
+    background: var(--bs-body-bg, #fff);
+    color: var(--bs-body-color, #212529);
+    resize: vertical; font-family: inherit; font-size: 0.82rem;
+  }
+  .defer-note::placeholder { color: var(--bs-secondary, #adb5bd); }
 
   /* Notes */
   .form-textarea {
@@ -109,15 +204,23 @@
   }
   .save-bar .btn { flex: 1; min-height: 48px; font-weight: 500; }
 
-  /* Mobile */
+  /* Mobile: chips stack full-width. Four chips at 25% each would wrap
+     mid-word, so they go two per row. */
   @media (max-width: 576px) {
     .phys-edit { padding: 0 0.5rem 100px; }
-    .special-row {
+    .special-main {
       flex-direction: column; align-items: flex-start;
-      gap: 0.5rem; padding: 0.875rem 0;
+      gap: 0.5rem;
     }
-    .special-chips { width: 100%; }
-    .special-chips .chip { flex: 1; justify-content: center; min-height: 44px; font-size: 0.85rem; }
+    .special-chips {
+      width: 100%;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.4rem;
+    }
+    .special-chips .chip {
+      justify-content: center; min-height: 44px; font-size: 0.85rem;
+    }
   }
 </style>
 
@@ -132,9 +235,12 @@
   <form id="special-form" action="/cases/{{ case.id }}/physical/edit/special" method="post">
 
     <div class="edit-section">
-      <div class="sec-head"><i class="bi bi-clipboard2-pulse me-1"></i> Tests Already Performed</div>
+      <div class="sec-head"><i class="bi bi-clipboard2-pulse me-1"></i> Special Tests</div>
       <div class="sec-body">
-        <p class="text-muted small mb-3">Record results so the agent does not re-suggest completed tests. Tap a chip to select.</p>
+        <p class="text-muted small mb-3">
+          Record a result, or mark a test as not indicated or deferred.
+          Tests left unmarked are listed as outstanding in the summary.
+        </p>
 
         {% set special_tests = [
           ('test_lachman', 'Lachman test', 'ACL integrity'),
@@ -154,21 +260,79 @@
         ] %}
 
         {% for field, name, structure in special_tests %}
+
+          {# Stored value. Legacy 'not_done' is treated as unset: it was
+             written by the old default and cannot be distinguished from
+             a row the clinician never reached. #}
+          {% set stored = case.physical.get(field) if case.physical else '' %}
+          {% if stored == 'not_done' %}{% set stored = '' %}{% endif %}
+
+          {% set defer = case.deferrals.get(field) if case.deferrals else None %}
+          {% set defer_reason = defer.reason if defer else '' %}
+          {% set defer_note = defer.note if defer else '' %}
+
         <div class="special-row">
-          <div class="special-info">
-            <div class="special-name">{{ name }}</div>
-            <div class="special-hint">{{ structure }}</div>
+
+          <div class="special-main">
+            <div class="special-info">
+              <div class="special-name">{{ name }}</div>
+              <div class="special-hint">{{ structure }}</div>
+            </div>
+            <div class="special-chips" id="chips-{{ field }}">
+              <div class="chip ni {% if stored == 'not_indicated' %}active ni{% endif %}"
+                   onclick="selectSpecial(this,'{{ field }}','not_indicated')">Not indicated</div>
+              <div class="chip def {% if stored == 'deferred' %}active def{% endif %}"
+                   onclick="selectSpecial(this,'{{ field }}','deferred')">Deferred</div>
+              <div class="chip neg {% if stored == 'negative' %}active neg{% endif %}"
+                   onclick="selectSpecial(this,'{{ field }}','negative')">Negative</div>
+              <div class="chip pos {% if stored == 'positive' %}active pos{% endif %}"
+                   onclick="selectSpecial(this,'{{ field }}','positive')">Positive</div>
+            </div>
           </div>
-          <div class="special-chips" id="chips-{{ field }}">
-            <div class="chip nd {% if case.physical and case.physical.get(field) == 'not_done' %}active nd{% endif %}"
-                 onclick="selectSpecial(this,'chips-{{ field }}','{{ field }}','not_done')">Not done</div>
-            <div class="chip neg {% if case.physical and case.physical.get(field) == 'negative' %}active neg{% endif %}"
-                 onclick="selectSpecial(this,'chips-{{ field }}','{{ field }}','negative')">Negative</div>
-            <div class="chip pos {% if case.physical and case.physical.get(field) == 'positive' %}active pos{% endif %}"
-                 onclick="selectSpecial(this,'chips-{{ field }}','{{ field }}','positive')">Positive</div>
+
+          {# Reason block. Open when deferred; the radios collapse to a
+             single line once a reason is chosen. #}
+          <div class="defer-block {% if stored == 'deferred' %}open{% endif %}"
+               id="defer-{{ field }}">
+
+            <div class="defer-label">Why was this deferred?</div>
+
+            <div class="defer-reasons {% if defer_reason %}d-none{% endif %}"
+                 id="reasons-{{ field }}">
+              {% for rkey, rlabel in deferral_reason_labels.items() %}
+              <label class="defer-reason">
+                <input type="radio"
+                       name="defer_reason_{{ field }}"
+                       value="{{ rkey }}"
+                       {% if defer_reason == rkey %}checked{% endif %}
+                       onchange="chooseReason('{{ field }}','{{ rkey }}')">
+                <span>{{ rlabel }}</span>
+              </label>
+              {% endfor %}
+            </div>
+
+            <div class="defer-chosen {% if defer_reason %}open{% endif %}"
+                 id="chosen-{{ field }}">
+              <div class="defer-chosen-text">
+                <strong id="chosen-label-{{ field }}">
+                  {{ deferral_reason_labels.get(defer_reason, '') }}
+                </strong>
+                <span class="defer-retry" id="chosen-retry-{{ field }}">
+                  {{ deferral_retry_conditions.get(defer_reason, '') }}
+                </span>
+              </div>
+              <button type="button" class="defer-change"
+                      onclick="changeReason('{{ field }}')">Change</button>
+            </div>
+
+            <textarea class="defer-note"
+                      name="defer_note_{{ field }}"
+                      maxlength="{{ deferral_note_max }}"
+                      placeholder="Optional note (leave blank if not needed)">{{ defer_note }}</textarea>
           </div>
+
           <input type="hidden" name="{{ field }}" id="input-{{ field }}"
-            value="{{ case.physical.get(field) if case.physical else 'not_done' }}">
+                 value="{{ stored }}">
         </div>
         {% endfor %}
 
@@ -194,17 +358,64 @@
 (function() {
   "use strict";
 
-  window.selectSpecial = function(el, groupId, fieldName, value) {
-    const group = document.getElementById(groupId);
+  // Retry conditions, injected from constants.py rather than duplicated
+  // here. The summary and the agent formatter read the same source.
+  const RETRY = {{ deferral_retry_conditions | tojson }};
+  const LABELS = {{ deferral_reason_labels | tojson }};
+
+  // ----------------------------------------------------------------
+  // Status chip selection.
+  //
+  // Tapping the active chip clears it, returning the test to unset.
+  // Without this a mis-tap is unrecoverable without reloading, and
+  // "unset" would be the one state a clinician could not get back to.
+  // ----------------------------------------------------------------
+  window.selectSpecial = function(el, fieldName, value) {
+    const group = document.getElementById('chips-' + fieldName);
+    const input = document.getElementById('input-' + fieldName);
+    const block = document.getElementById('defer-' + fieldName);
+
+    const wasActive = el.classList.contains('active');
+
     group.querySelectorAll('.chip').forEach(function(c) {
-      c.classList.remove('active', 'nd', 'neg', 'pos');
+      c.classList.remove('active');
     });
+
+    if (wasActive) {
+      input.value = '';
+      block.classList.remove('open');
+      return;
+    }
+
     el.classList.add('active');
-    if (value === 'not_done') el.classList.add('nd');
-    if (value === 'negative') el.classList.add('neg');
-    if (value === 'positive') el.classList.add('pos');
-    document.getElementById('input-' + fieldName).value = value;
+    input.value = value;
+
+    if (value === 'deferred') {
+      block.classList.add('open');
+    } else {
+      block.classList.remove('open');
+    }
   };
+
+  // ----------------------------------------------------------------
+  // Reason chosen: collapse the radios to a single line and show the
+  // retry condition. patient_declined has an empty condition, so that
+  // line simply renders nothing.
+  // ----------------------------------------------------------------
+  window.chooseReason = function(fieldName, reasonKey) {
+    document.getElementById('reasons-' + fieldName).classList.add('d-none');
+    document.getElementById('chosen-' + fieldName).classList.add('open');
+    document.getElementById('chosen-label-' + fieldName).textContent =
+      LABELS[reasonKey] || '';
+    document.getElementById('chosen-retry-' + fieldName).textContent =
+      RETRY[reasonKey] || '';
+  };
+
+  window.changeReason = function(fieldName) {
+    document.getElementById('reasons-' + fieldName).classList.remove('d-none');
+    document.getElementById('chosen-' + fieldName).classList.remove('open');
+  };
+
 })();
 </script>
 
