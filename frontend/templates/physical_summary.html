@@ -286,11 +286,28 @@
       </div>
       <div class="card-body">
         <div class="tag-list">
-          {% if case.physical.get('rom_flexion_involved') not in (None, '') %}
-            {% set deficit = (case.physical.get('rom_flexion_uninvolved') or 135)|int - (case.physical.get('rom_flexion_involved') or 0)|int %}
-            <span class="tag {% if deficit > 15 %}alert{% elif deficit > 5 %}warn{% else %}success{% endif %}">
+          {% set flex_inv = case.physical.get('rom_flexion_involved') %}
+          {% set flex_uninv = case.physical.get('rom_flexion_uninvolved') %}
+          {% if flex_inv not in (None, '') %}
+            {% if flex_uninv not in (None, '') %}
+              {# Both sides measured - the deficit is a real comparison. #}
+              {% set deficit = flex_uninv|int - flex_inv|int %}
+            {% else %}
+              {# Contralateral knee not measured. No deficit is shown rather
+                 than one computed against an assumed normal: the previous
+                 `or 135` fallback both invented a reference value and turned
+                 a genuine uninvolved reading of 0 into 135, since 0 is
+                 falsy. #}
+              {% set deficit = None %}
+            {% endif %}
+            {# No severity class when there is nothing to compare against.
+               A deficit is a comparison between two measured knees; with
+               only one measured, colouring the tag would be asserting a
+               severity the data does not support. #}
+            <span class="tag {% if deficit is none %}{% elif deficit > 15 %}alert{% elif deficit > 5 %}warn{% else %}success{% endif %}">
               Flexion {{ case.physical.rom_flexion_involved }}°
-              {% if deficit > 0 %}({{ deficit }}° deficit){% endif %}
+              {% if deficit is not none and deficit > 0 %}({{ deficit }}° deficit){% endif %}
+              {% if deficit is none %}<span class="text-muted">(contralateral not measured)</span>{% endif %}
             </span>
           {% endif %}
           {% if case.physical.get('rom_extension_involved') not in (None, '') %}

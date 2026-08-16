@@ -628,7 +628,24 @@
     // Don't fight the caret while the user is typing.
     if (input.value !== String(n)) input.value = n;
     document.getElementById("val-" + key).textContent = n;
-    document.getElementById("hidden-" + key).value = n;
+
+    if (markMeasured !== false) MEASURED.add(key);
+
+    // Only a MEASURED gauge posts a value.
+    //
+    // The gauge still renders at a starting position so the control is
+    // usable, but the hidden field stays empty until the clinician
+    // touches it. Previously every gauge posted its default on save,
+    // which stored 0 degrees flexion on the involved side and 135 on
+    // the uninvolved side for a knee nobody had measured - and those
+    // fabricated values reached the agent prompt as "recorded by the
+    // clinician, do not contradict", with the deficit arithmetic
+    // turning them into the most alarming number in the prompt.
+    //
+    // MEASURED already existed and was already correct; it was driving
+    // the deficit display but not the values actually persisted.
+    document.getElementById("hidden-" + key).value =
+      MEASURED.has(key) ? n : "";
 
     if (markMeasured !== false) MEASURED.add(key);
 
