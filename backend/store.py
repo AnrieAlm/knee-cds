@@ -16,6 +16,12 @@ from pymongo.server_api import ServerApi
 
 # --- connection ---
 # Read the URI from the environment. Never hardcode the password here.
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 MONGO_URI = os.environ.get("MONGO_URI")
 if not MONGO_URI:
     raise RuntimeError(
@@ -172,3 +178,17 @@ def get_case(case_id: str):
     """Return one case by its string id, or None."""
     doc = _collection.find_one({"id": case_id})
     return _clean(doc) if doc else None
+
+def save_deferrals(case_id: str, deferrals: dict):
+    """
+    Save the deferral map onto the case document.
+
+    Same overwrite pattern as save_physical. The map is rebuilt in full
+    on each save rather than patched, so an item that stops being
+    deferred disappears from it.
+    """
+    _collection.find_one_and_update(
+        {'id': case_id},
+        {'$set': {'deferrals': deferrals}},
+    )
+    return deferrals

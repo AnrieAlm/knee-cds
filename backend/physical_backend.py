@@ -63,8 +63,16 @@ import starlette.status as status
 
 from backend.case_access import load_case_for_read, load_case_for_write
 from backend.safety.neuro_trigger import check_neuro_trigger, check_inhibition
-from backend.agent.physical_context import formatPhysicalForAgent
 
+
+from backend.constants import (
+    DEFERRAL_REASON_LABELS,
+    DEFERRAL_RETRY_CONDITION,
+    DEFERRAL_NOTE_MAX_CHARS,
+    is_valid_deferral_reason,
+    ITEM_DEFERRED,
+)
+from datetime import datetime, timezone
 # No router-level Depends. Authorisation is per-route because read and
 # write differ: a head of department may view an examination but must
 # not alter one, and a single router-wide dependency cannot express
@@ -303,6 +311,12 @@ def _render(request: Request, template: str, case_id: str):
     load_case_for_read raises 401/404 rather than returning None, so
     the previous explicit `if case is None` check is now redundant:
     an unauthorised or absent case never reaches the render.
+
+    The deferral vocabulary is passed to every physical template rather
+    than only the special tests page. Deferrals are keyed by field name
+    and are not specific to special tests - the same dict will carry
+    history and observation items - so the labels belong in the shared
+    render rather than one branch of it.
     """
     user, case = load_case_for_read(request, case_id)
     return request.app.state.templates.TemplateResponse(
@@ -315,6 +329,11 @@ def _render(request: Request, template: str, case_id: str):
             # templates with True, and an Undefined flag makes
             # `{% if not is_admin_view %}` true by accident.
             "is_admin_view": False,
+            # Display strings stay out of Jinja - same rule as the
+            # department and grade label maps.
+            "deferral_reason_labels": DEFERRAL_REASON_LABELS,
+            "deferral_retry_conditions": DEFERRAL_RETRY_CONDITION,
+            "deferral_note_max": DEFERRAL_NOTE_MAX_CHARS,
         },
     )
 
@@ -440,29 +459,6 @@ async def physical_save_mmt(request: Request, case_id: str):
 async def physical_edit_special(request: Request, case_id: str):
     return _render(request, "physical_edit_special.html", case_id)
 
-
-@router.post("/cases/{case_id}/physical/edit/special",
-             response_class=RedirectResponse)
-async def physical_save_special(request: Request, case_id: str):
-    user, case = load_case_for_write(request, case_id)
-    form = dict(await request.form())
-    _merge_physical_section(
-        case_id, form,
-        section_fields=[
-            "test_lachman", "test_anterior_drawer", "test_pivot_shift",
-            "test_posterior_drawer", "test_sag_sign",
-            "test_valgus_0", "test_valgus_30",
-            "test_varus_0", "test_varus_30",
-            "test_mcmurray", "test_thessaly",
-            "test_apley_compression", "test_apley_distraction",
-            "test_patellar_apprehension", "special_tests_notes",
-        ],
-        store=request.app.state.store,
-        case=case,
-    )
-    return _back_to_summary(case_id)
-
-
 # ------------------------------------------------------------------
 # SECTION 5: NEUROLOGICAL SCREEN
 # ------------------------------------------------------------------
@@ -470,6 +466,117 @@ async def physical_save_special(request: Request, case_id: str):
 async def physical_edit_neuro(request: Request, case_id: str):
     return _render(request, "physical_edit_neuro.html", case_id)
 
+
+@router.post("/cases/{case_id}/physical/edit/special",
+             response_class=RedirectResponse)
+async def physical_save_special(request: Request, case_id: str):
+    user, case = load_case_for_write(request, case_id)
+    form = dict(await request.form())
+
+    special_fields = [
+        "test_lachman", "test_anterior_drawer", "test_pivot_shift",
+        "test_posterior_drawer", "test_sag_sign",
+        "test_valgus_0", "test_valgus_30",
+        "test_varus_0", "test_varus_30",
+        "test_mcmurray", "test_thessaly",
+        "test_apley_compression", "test_apley_distraction",
+        "test_patellar_apprehension",
+    ]
+
+    _merge_physical_section(
+        case_id, form,
+        section_fields=special_fields + ["special_tests_notes"],
+        store=request.app.state.store,
+        case=case,
+    )
+
+    # After the physical merge, so a failure there does not leave a
+    # deferral recorded against a result that was never saved.
+    _merge_deferrals(
+        case_id, form,
+        section_fields=special_fields,
+        store=request.app.state.store,
+        case=case,
+    )
+
+    return _back_to_summary(case_id)
+
+# ------------------------------------------------------------------
+# Agent context endpoint (read-only, JSON)
+# Debug aid: shows exactly what the agent will be handed for this case.
+# ------------------------------------------------------------------
+@router.get("/api/cases/{case_id}/physical/agent-context")
+async def physical_agent_context(request: Request, case_id: str):
+    user, case = load_case_for_read(request, case_id)
+    return {"agent_context": formatPhysicalForAgent(case.get("physical") or {})}
+
+# ===================================================================
+# Deferrals
+# ===================================================================
+
+def _merge_deferrals(
+    case_id: str,
+    form: dict,
+    section_fields: list,
+    store,
+    case: dict,
+) -> dict:
+    """
+    Record why an indicated item was not performed.
+
+    Kept separate from the physical dict deliberately. A deferral is a
+    statement ABOUT a finding rather than a finding itself, and mixing
+    the two would mean every new deferrable item added two fields to
+    the physical schema instead of none. Keyed by field name so the
+    same dict covers history items later without changing shape.
+
+    Only fields currently marked deferred keep an entry. Changing a
+    test from deferred to a recorded result removes its deferral, so
+    the dict cannot accumulate reasons for items that are no longer
+    outstanding - stale entries there would surface in the summary as
+    pending work that has in fact been done.
+    """
+    deferrals = dict(case.get("deferrals") or {})
+    now = datetime.now(timezone.utc)
+    uid = case.get("physio_uid")
+
+    for field in section_fields:
+        state = form.get(field)
+
+        if state != ITEM_DEFERRED:
+            # No longer deferred - drop any prior reason.
+            deferrals.pop(field, None)
+            continue
+
+        reason = (form.get(f"defer_reason_{field}") or "").strip()
+        note = (form.get(f"defer_note_{field}") or "").strip()[
+            :DEFERRAL_NOTE_MAX_CHARS
+        ]
+
+        # An unrecognised reason is stored as absent rather than as
+        # itself. The enum is the countable variable for the evaluation;
+        # letting an arbitrary posted string into it would produce a
+        # category that cannot be reported on.
+        if not is_valid_deferral_reason(reason):
+            if reason:
+                print(f"[deferral] rejected unknown reason {reason!r} for {field}")
+            reason = ""
+
+        existing = deferrals.get(field) or {}
+
+        deferrals[field] = {
+            "reason": reason,
+            "note": note,
+            # First-recorded time is preserved across edits. When the
+            # deferral was made is the clinically meaningful timestamp,
+            # not when the page was last saved.
+            "noted_at": existing.get("noted_at") or now,
+            "updated_at": now,
+            "by_uid": existing.get("by_uid") or uid,
+        }
+
+    store.save_deferrals(case_id, deferrals)
+    return deferrals
 
 @router.post("/cases/{case_id}/physical/edit/neuro",
              response_class=RedirectResponse)
@@ -486,20 +593,8 @@ async def physical_save_neuro(request: Request, case_id: str):
             "mechanoreceptor_involvement", "neuro_notes",
         ],
         boolean_fields=BOOLEAN_FIELDS["neuro"],
-        # Recording the screen is requesting it — see the merge helper.
         is_neuro_section=True,
         store=request.app.state.store,
         case=case,
     )
     return _back_to_summary(case_id)
-
-
-# ------------------------------------------------------------------
-# Agent context endpoint (read-only, JSON)
-# Debug aid: shows exactly what the agent will be handed for this case.
-# ------------------------------------------------------------------
-@router.get("/api/cases/{case_id}/physical/agent-context")
-async def physical_agent_context(request: Request, case_id: str):
-    user, case = load_case_for_read(request, case_id)
-    return {"agent_context": formatPhysicalForAgent(case.get("physical") or {})}
-
