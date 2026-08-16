@@ -366,7 +366,11 @@ def _extract_retrieved(response):
 # ===========================================================
 # Quick manual test
 # ===========================================================
-def run_agent_only(query, safety_facts, physical_dict=None, investigations=None):
+# deferrals arrives separately from physical_dict because it lives on the case
+# document rather than inside physical. Keyword with a None default so the
+# existing positional calls keep working.
+def run_agent_only(query, safety_facts, physical_dict=None, investigations=None,
+                   deferrals=None):
     # thin wrapper so main.py can call the agent without re-running the
     # deterministic gates (those already ran when the case was created)
     llm = buildLlm() 
@@ -385,7 +389,7 @@ def run_agent_only(query, safety_facts, physical_dict=None, investigations=None)
     # labelled block rather than inside the ESTABLISHED FACTS header
     physical_block = ''
     if physical_dict:
-        physical_text = formatPhysicalForAgent(physical_dict)
+        physical_text = formatPhysicalForAgent(physical_dict, deferrals=deferrals)
         physical_block = (
             '\n\nPHYSICAL EXAMINATION (recorded by the clinician, do not contradict):\n'
             + physical_text

@@ -343,7 +343,9 @@ def _build_agent_query(case: dict) -> str:
 
     if physical:
         from backend.agent.physical_context import formatPhysicalForAgent
-        query += formatPhysicalForAgent(physical) + " "
+        query += formatPhysicalForAgent(
+            physical, deferrals=case.get("deferrals")
+        ) + " "
 
     query += "Which special tests should be prioritised and in what order?"
     return query
@@ -783,7 +785,8 @@ async def case_suggest(request: Request, case_id: str):
     print(f"[suggest] query:\n{query}")
 
     result = run_agent_only(
-        query, safety_facts, case.get("physical"), case.get("investigations")
+        query, safety_facts, case.get("physical"), case.get("investigations"),
+        deferrals=case.get("deferrals"),
     )
 
     # Append-only audit log: query, retrieved chunks, and output.
@@ -860,6 +863,7 @@ async def case_suggest_async(request: Request, case_id: str):
     # the model see physical findings the query never described.
     physical_snapshot = case.get("physical")
     investigations_snapshot = case.get("investigations")
+    deferrals_snapshot = case.get("deferrals")
     author_uid = user.get("uid")
 
     print(f"[suggest-async] query:\n{query}")
@@ -875,7 +879,8 @@ async def case_suggest_async(request: Request, case_id: str):
         # agent's own three fields are overwritten.
         try:
             result = run_agent_only(
-                query, safety_facts, physical_snapshot, investigations_snapshot
+                query, safety_facts, physical_snapshot, investigations_snapshot,
+                deferrals=deferrals_snapshot,
             )
 
             store.append_agent_log(case_id, {

@@ -113,7 +113,7 @@ def append_agent_log(case_id: str, entry: dict):
     This is the tamper-evident audit trail — it records what the agent
     retrieved and which deterministic rules fired.
     """
-    entry["logged_at"] = datetime.now().isoformat()
+    entry["logged_at"] = datetime.now(timezone.utc)
     _collection.find_one_and_update(
         {"id": case_id},
         {"$push": {"agentLog": entry}},

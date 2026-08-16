@@ -7,7 +7,10 @@
 # governance problem, not because it is currently binding
 
 from backend.validation.rom_plausibility import buildPlausibilityWarningText
-
+from backend.constants import (
+    DEFERRAL_REASON_LABELS,
+    DEFERRAL_RETRY_CONDITION,
+)
 # the muscles in the order they should be reported
 context_muscle_order = [
     ('quadriceps', 'quadriceps'),
@@ -267,20 +270,70 @@ def buildStrengthText(physical_dict):
 # this is the main reason physical findings are sent to the agent at all — a test that has
 # already been performed should not be suggested again, and its result changes what is
 # worth doing next
-def buildSpecialTestText(physical_dict):
-    parts = []
+# build the special tests sentences
+# this is the main reason physical findings are sent to the agent at all — a test that has
+# already been performed should not be suggested again, and its result changes what is
+# worth doing next
+#
+# THREE states are now distinguished, because they mean different things to the agent:
+#
+#   recorded (positive/negative)  performed. Excluded from suggestion, given as evidence.
+#   deferred                      indicated but not performed. The agent should know the
+#                                 test is outstanding AND why, because the reason often
+#                                 constrains what else is worth suggesting — a knee too
+#                                 swollen for McMurray is also too swollen for Thessaly.
+#   not_indicated                 a closed clinical judgement. Deliberately NOT sent.
+#                                 Re-raising a decision the clinician already made is how
+#                                 a decision aid trains people to ignore it.
+#   unset                         never addressed. Silent here; the deterministic coverage
+#                                 layer surfaces it, not the model.
+#
+# Previously all four collapsed into one line reading "Tests already performed: Lachman
+# deferred", which told the model the opposite of the truth under a heading that
+# contradicted its own value, and dropped the reason entirely.
+def buildSpecialTestText(physical_dict, deferrals=None):
+    deferrals = deferrals or {}
+    performed = []
+    deferred = []
 
     for field, label in special_test_labels:
         result = physical_dict.get(field, '')
-        # not_done is in not_recorded_values, so an untested test is skipped
+
+        if result == 'deferred':
+            entry = deferrals.get(field) or {}
+            reason_key = entry.get('reason', '')
+            reason = DEFERRAL_REASON_LABELS.get(reason_key, '')
+            retry = DEFERRAL_RETRY_CONDITION.get(reason_key, '')
+
+            detail = ''
+            if reason and retry:
+                detail = ' (' + reason.lower() + ' — ' + retry.rstrip('.').lower() + ')'
+            elif reason:
+                detail = ' (' + reason.lower() + ')'
+
+            deferred.append(label + detail)
+            continue
+
+        # not_indicated is a closed decision and is withheld from the agent
+        # entirely. It is not evidence and it is not an outstanding task.
+        if result == 'not_indicated':
+            continue
+
+        # unset, legacy not_done, and the other not-recorded markers
         if result in not_recorded_values:
             continue
-        parts.append(label + ' ' + result)
 
-    if len(parts) == 0:
-        return ''
+        performed.append(label + ' ' + result)
 
-    return 'Tests already performed: ' + ', '.join(parts) + '.'
+    sentences = []
+    if performed:
+        sentences.append('Tests already performed: ' + ', '.join(performed) + '.')
+    if deferred:
+        sentences.append(
+            'Tests indicated but not performed: ' + ', '.join(deferred) + '.'
+        )
+
+    return ' '.join(sentences)
 
 
 # build the neuro sentence
@@ -322,9 +375,12 @@ def buildNeuroText(physical_dict):
     return 'Neuro screen ' + '; '.join(parts) + '.'
 
 
-# the function the orchestrator calls
-# returns a short block, or a single short line when the examination has not been done yet
-def formatPhysicalForAgent(physical_dict, token_budget=650):
+# deferrals is passed separately because it lives on the case document rather
+# than inside physical. A deferral is a statement ABOUT a finding, not a
+# finding, so it is stored alongside rather than within - see constants.py.
+# Defaulted to None so any caller not yet updated keeps working, just without
+# the deferral line.
+def formatPhysicalForAgent(physical_dict, token_budget=650, deferrals=None):
     # an empty or missing block tells the agent to suggest an examination rather than interpret one
     if not physical_dict:
         return 'Physical examination not yet recorded.'
@@ -347,7 +403,7 @@ def formatPhysicalForAgent(physical_dict, token_budget=650):
         {'read_order': 2, 'keep_rank': 4, 'text': buildRangeText(physical_dict)},
         {'read_order': 3, 'keep_rank': 3, 'text': buildFlagText(physical_dict)},
         {'read_order': 4, 'keep_rank': 6, 'text': buildStrengthText(physical_dict)},
-        {'read_order': 5, 'keep_rank': 2, 'text': buildSpecialTestText(physical_dict)},
+        {'read_order': 5, 'keep_rank': 2, 'text': buildSpecialTestText(physical_dict, deferrals)},
         {'read_order': 6, 'keep_rank': 1 if neuro_is_triggered else 7, 'text': neuro_text}
     ]
 
