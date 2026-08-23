@@ -24,8 +24,10 @@ from backend.constants import (
     INV_STATUS_FAILED,
     INV_STATUS_REJECTED,
     MODALITY_LABELS,
+    SIDE_BILATERAL,
     SIDE_LABELS,
     SIDE_NOT_STATED,
+    SIDES,
 )
 
 
@@ -90,7 +92,38 @@ def _descriptor(inv: Dict[str, Any]) -> str:
 
     return f"{modality}, {region}, {_format_date(inv.get('study_date'))}"
 
+def _normalise_side(value: Any) -> str:
+    """Map either storage convention onto the SIDE_* constants.
 
+    History stores the involved side lowercase from a form field.
+    Investigations store the SIDE_* constants uppercase. Both are
+    normalised here so the comparison cannot silently fail.
+    """
+    if not isinstance(value, str):
+        return SIDE_NOT_STATED
+    upper = value.strip().upper()
+    return upper if upper in SIDES else SIDE_NOT_STATED
+
+
+def side_conflicts(inv: Dict[str, Any], involved_side: Any) -> bool:
+    """True when a study is of a limb other than the one being assessed.
+
+    Deterministic relevance gate. The provenance gate establishes that a
+    transcription is faithful to its source document. It does not establish
+    that the document concerns this patient's affected limb. Those are
+    different properties and are checked separately.
+
+    Absent or bilateral values on either side are not treated as conflicts,
+    because an unknown side is not evidence of a mismatch.
+    """
+    study = _normalise_side(inv.get("side"))
+    involved = _normalise_side(involved_side)
+
+    if study in (SIDE_NOT_STATED, SIDE_BILATERAL):
+        return False
+    if involved in (SIDE_NOT_STATED, SIDE_BILATERAL):
+        return False
+    return study != involved
 # ---------------------------------------------------------------------------
 # Selection
 # ---------------------------------------------------------------------------
@@ -140,22 +173,47 @@ def build_investigation_context(case: Dict[str, Any]) -> str:
     Returns a plain-text block. Returns an explicit 'none available' line
     rather than an empty string, so the agent can distinguish "no prior
     imaging" from "imaging section not reached yet".
+
+    Two gates apply. The provenance gate (visible_investigations) decides
+    whether machine-derived text is trustworthy enough to reason over. The
+    laterality gate (side_conflicts) decides whether a trustworthy record
+    describes the limb under assessment. Both are resolved here in plain
+    Python rather than left to the model.
     """
     visible = visible_investigations(case)
     withheld = len(pending_verification(case))
 
+    involved_side = (case.get("history") or {}).get("involved_side")
+    mismatched = [inv for inv in visible if side_conflicts(inv, involved_side)]
+    visible = [inv for inv in visible if not side_conflicts(inv, involved_side)]
+
     lines: List[str] = ["PRIOR INVESTIGATIONS"]
 
     if not visible:
-        lines.append(
-            "No verified prior investigations are available for this case."
-        )
+        if mismatched:
+            lines.append(
+                "No verified prior investigations of the limb under "
+                "assessment are available for this case."
+            )
+        else:
+            lines.append(
+                "No verified prior investigations are available for this case."
+            )
+
+        for inv in mismatched:
+            lines.append(
+                f"({_descriptor(inv)} is attached to this case but concerns "
+                "the other limb. It has been withheld as it does not describe "
+                "the limb under assessment.)"
+            )
+
         if withheld:
             lines.append(
                 f"({withheld} attached document(s) are awaiting clinician "
                 "verification and are deliberately withheld from you. Do not "
                 "speculate about their contents.)"
             )
+
         lines.append(
             "Reason from the clinical history and physical examination alone."
         )
@@ -195,6 +253,13 @@ def build_investigation_context(case: Dict[str, Any]) -> str:
         "conflict yourself. Deterministic safety rules are unaffected by "
         "prior imaging and remain in force."
     )
+
+    for inv in mismatched:
+        lines.append(
+            f"({_descriptor(inv)} is attached to this case but concerns the "
+            "other limb. It has been withheld as it does not describe the "
+            "limb under assessment.)"
+        )
 
     if withheld:
         lines.append(
@@ -239,6 +304,7 @@ def investigation_citation(inv: Dict[str, Any]) -> Dict[str, str]:
 def build_investigation_context_from_list(
     investigations: Optional[List[Dict[str, Any]]],
     reference_date: Any = None,
+    involved_side: Any = None,
 ) -> str:
     """Agent-facing entry point.
 
@@ -250,23 +316,6 @@ def build_investigation_context_from_list(
     shim = {
         "investigations": investigations or [],
         "created_at": reference_date,
-    }
-    return build_investigation_context(shim)
-
-
-def build_investigation_context_from_list(
-    investigations: Optional[List[Dict[str, Any]]],
-    reference_date: Any = None,
-) -> str:
-    """Agent-facing entry point.
-
-    Takes the investigations list directly rather than the case document,
-    mirroring how physical_dict is passed to the orchestrator. Keeps the
-    agent layer a pure function of what it is given, with no database read
-    of its own.
-    """
-    shim = {
-        "investigations": investigations or [],
-        "created_at": reference_date,
+        "history": {"involved_side": involved_side},
     }
     return build_investigation_context(shim)

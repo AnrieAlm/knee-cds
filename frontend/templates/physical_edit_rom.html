@@ -1,8 +1,8 @@
 {% extends "case_workspace.html" %}
 {% block tab_content %}
 
-{# Single guarded accessor — avoids the ~12 `case.physical.x if case.physical`
-   patterns that silently render "" when the key is absent. #}
+{# Shortcut so we can write p.get('field') instead of checking whether
+   case.physical exists every single time. #}
 {% set p = case.physical or {} %}
 
 <style>
@@ -66,6 +66,8 @@
     width: 150px; height: 82px;
     margin: 0 auto;
   }
+  /* The round line caps stick out past the edge of the drawing area,
+     so we have to let them overflow or they get cut in half. */
   .rom-gauge svg { overflow: visible; }
   .rom-value {
     position: absolute;
@@ -83,7 +85,7 @@
     font-size: 0.75rem; color: var(--bs-secondary, #6c757d);
     margin-bottom: 0.25rem;
   }
-  /* FIX 5: direction hint under extension gauges */
+  /* Small note under a gauge explaining what the numbers mean. */
   .rom-hint {
     font-size: 0.68rem; color: var(--bs-secondary, #6c757d);
     margin-top: 0.2rem; line-height: 1.3;
@@ -249,14 +251,15 @@
             <div class="rom-gauge-wrap">
               <div class="rom-gauge" id="gauge-flexion-involved">
                 <svg width="150" height="82" viewBox="0 0 150 82">
+                  <!-- Grey background arc: the empty gauge. -->
                   <path d="M 12 82 A 63 63 0 0 1 138 82" fill="none"
                     stroke="var(--bs-border-color,#dee2e6)" stroke-width="9" stroke-linecap="round"/>
+                  <!-- Coloured arc drawn on top. It starts hidden
+                       (dash offset 198) and the JavaScript fills it in. -->
                   <path id="arc-flexion-involved" d="M 12 82 A 63 63 0 0 1 138 82" fill="none"
                     stroke="var(--bs-primary,#0d6efd)" stroke-width="9" stroke-linecap="round"
                     stroke-dasharray="198" stroke-dashoffset="198"
                     style="transition:stroke-dashoffset 0.3s ease, stroke 0.3s ease"/>
-                  <text x="75" y="62" text-anchor="middle" font-size="11"
-                    fill="var(--bs-secondary,#6c757d)">0°</text>
                   <text x="20" y="78" text-anchor="middle" font-size="10"
                     fill="var(--bs-secondary,#6c757d)">0°</text>
                   <text x="130" y="78" text-anchor="middle" font-size="10"
@@ -274,7 +277,7 @@
                 <button type="button" class="rom-btn" onclick="adjustRom('flexion-involved',5)">+</button>
               </div>
               <div class="rom-hint">Normal full range <strong>135°</strong></div>
-              <input type="hidden" name="rom_flexion_involved" id="hidden-flexion-involved" value="0">
+              <input type="hidden" name="rom_flexion_involved" id="hidden-flexion-involved" value="">
             </div>
 
             <!-- Extension -->
@@ -288,8 +291,6 @@
                     stroke="var(--bs-success,#198754)" stroke-width="9" stroke-linecap="round"
                     stroke-dasharray="198" stroke-dashoffset="198"
                     style="transition:stroke-dashoffset 0.3s ease, stroke 0.3s ease"/>
-                  <text x="75" y="62" text-anchor="middle" font-size="11"
-                    fill="var(--bs-secondary,#6c757d)">0°</text>
                   <text x="20" y="78" text-anchor="middle" font-size="10"
                     fill="var(--bs-secondary,#6c757d)">−10°</text>
                   <text x="130" y="78" text-anchor="middle" font-size="10"
@@ -301,18 +302,19 @@
               </div>
               <div class="rom-controls">
                 <button type="button" class="rom-btn" onclick="adjustRom('extension-involved',-2)">−</button>
-                <!-- FIX 4: inputmode="text" so the minus key exists on mobile keypads -->
+                <!-- inputmode is "text" here, not "numeric", because the
+                     numeric phone keypad has no minus key and this field
+                     needs to accept negative numbers. -->
                 <input type="text" inputmode="text" pattern="-?[0-9]*"
                   class="rom-input" id="input-extension-involved" value="0"
                   oninput="setRom('extension-involved', this.value)">
                 <button type="button" class="rom-btn" onclick="adjustRom('extension-involved',2)">+</button>
               </div>
-              <!-- FIX 5: state the sign convention explicitly -->
               <div class="rom-hint">
                 <strong>0°</strong> = full extension · <strong>positive</strong> = deficit
                 (knee will not straighten) · <strong>negative</strong> = hyperextension
               </div>
-              <input type="hidden" name="rom_extension_involved" id="hidden-extension-involved" value="0">
+              <input type="hidden" name="rom_extension_involved" id="hidden-extension-involved" value="">
             </div>
 
             <!-- Toggles -->
@@ -356,10 +358,8 @@
                     stroke="var(--bs-border-color,#dee2e6)" stroke-width="9" stroke-linecap="round"/>
                   <path id="arc-flexion-uninvolved" d="M 12 82 A 63 63 0 0 1 138 82" fill="none"
                     stroke="var(--bs-success,#198754)" stroke-width="9" stroke-linecap="round"
-                    stroke-dasharray="198" stroke-dashoffset="0"
+                    stroke-dasharray="198" stroke-dashoffset="198"
                     style="transition:stroke-dashoffset 0.3s ease, stroke 0.3s ease"/>
-                  <text x="75" y="62" text-anchor="middle" font-size="11"
-                    fill="var(--bs-secondary,#6c757d)">0°</text>
                   <text x="20" y="78" text-anchor="middle" font-size="10"
                     fill="var(--bs-secondary,#6c757d)">0°</text>
                   <text x="130" y="78" text-anchor="middle" font-size="10"
@@ -377,7 +377,7 @@
                 <button type="button" class="rom-btn" onclick="adjustRom('flexion-uninvolved',5)">+</button>
               </div>
               <div class="rom-hint">Normal full range <strong>135°</strong></div>
-              <input type="hidden" name="rom_flexion_uninvolved" id="hidden-flexion-uninvolved" value="135">
+              <input type="hidden" name="rom_flexion_uninvolved" id="hidden-flexion-uninvolved" value="">
             </div>
 
             <!-- Extension -->
@@ -389,10 +389,8 @@
                     stroke="var(--bs-border-color,#dee2e6)" stroke-width="9" stroke-linecap="round"/>
                   <path id="arc-extension-uninvolved" d="M 12 82 A 63 63 0 0 1 138 82" fill="none"
                     stroke="var(--bs-success,#198754)" stroke-width="9" stroke-linecap="round"
-                    stroke-dasharray="198" stroke-dashoffset="66"
+                    stroke-dasharray="198" stroke-dashoffset="198"
                     style="transition:stroke-dashoffset 0.3s ease, stroke 0.3s ease"/>
-                  <text x="75" y="62" text-anchor="middle" font-size="11"
-                    fill="var(--bs-secondary,#6c757d)">0°</text>
                   <text x="20" y="78" text-anchor="middle" font-size="10"
                     fill="var(--bs-secondary,#6c757d)">−10°</text>
                   <text x="130" y="78" text-anchor="middle" font-size="10"
@@ -413,7 +411,7 @@
                 <strong>0°</strong> = full extension · <strong>positive</strong> = deficit
                 (knee will not straighten) · <strong>negative</strong> = hyperextension
               </div>
-              <input type="hidden" name="rom_extension_uninvolved" id="hidden-extension-uninvolved" value="0">
+              <input type="hidden" name="rom_extension_uninvolved" id="hidden-extension-uninvolved" value="">
             </div>
 
             <!-- Deficit -->
@@ -581,146 +579,377 @@
 </div>
 
 <script>
-(function() {
-  "use strict";
+// =====================================================================
+// RANGE OF MOTION GAUGES
+//
+// Each gauge is a half circle drawn as an SVG arc.
+// The arc is 198 units long (pi x radius = 3.14159 x 63 = 197.9,
+// which we round to 198).
+//
+// To show only part of the arc we use stroke-dashoffset:
+//     offset 198  ->  nothing is showing (empty gauge)
+//     offset 99   ->  half is showing
+//     offset 0    ->  all of it is showing (full gauge)
+//
+// So a bigger offset means a smaller gauge reading.
+// =====================================================================
 
-  const ROM_CFG = {
-    "flexion-involved":     { max: 150, min: 0,   step: 5, arcMax: 198, default: 0 },
-    "flexion-uninvolved":   { max: 150, min: 0,   step: 5, arcMax: 198, default: 135 },
-    "extension-involved":   { max: 30,  min: -10, step: 2, arcMax: 198, default: 0, offset: 10, range: 40, signed: true },
-    "extension-uninvolved": { max: 30,  min: -10, step: 2, arcMax: 198, default: 0, offset: 10, range: 40, signed: true },
-  };
+var ARC_LENGTH = 198;
 
-  // FIX 3: measured-ness is tracked explicitly, not inferred by comparing
-  // against defaults. A knee locked at 0° flexion is a real, severe finding
-  // and must not be displayed as "not measured".
-  const MEASURED = new Set();
+// The four gauges on this page.
+var GAUGE_NAMES = [
+  "flexion-involved",
+  "flexion-uninvolved",
+  "extension-involved",
+  "extension-uninvolved"
+];
 
-  // Which gauges the server supplied a stored value for.
-  const SERVER_HAS = {
-    "flexion-involved":     {{ 'true' if p.get('rom_flexion_involved')     is not none else 'false' }},
-    "flexion-uninvolved":   {{ 'true' if p.get('rom_flexion_uninvolved')   is not none else 'false' }},
-    "extension-involved":   {{ 'true' if p.get('rom_extension_involved')   is not none else 'false' }},
-    "extension-uninvolved": {{ 'true' if p.get('rom_extension_uninvolved') is not none else 'false' }}
-  };
+// Has the clinician actually entered a number for this gauge?
+// This starts as false for every gauge. If it is still false when the
+// form is saved, we send an empty value instead of a number.
+//
+// This matters: if we saved the starting number for a gauge nobody
+// measured, the case would contain a made-up measurement, and the AI
+// agent would later read that made-up number as a real clinical finding.
+var measured = {
+  "flexion-involved": false,
+  "flexion-uninvolved": false,
+  "extension-involved": false,
+  "extension-uninvolved": false
+};
 
-  window.adjustRom = function(key, delta) {
-    const input = document.getElementById("input-" + key);
-    let val = parseInt(input.value, 10);
-    if (isNaN(val)) val = ROM_CFG[key].default;
-    setRom(key, val + delta);
-  };
+// Did the server send us a saved value for each gauge?
+// If yes, that gauge counts as measured as soon as the page loads.
+var serverHasValue = {
+  "flexion-involved":     {{ 'true' if p.get('rom_flexion_involved')     is not none else 'false' }},
+  "flexion-uninvolved":   {{ 'true' if p.get('rom_flexion_uninvolved')   is not none else 'false' }},
+  "extension-involved":   {{ 'true' if p.get('rom_extension_involved')   is not none else 'false' }},
+  "extension-uninvolved": {{ 'true' if p.get('rom_extension_uninvolved') is not none else 'false' }}
+};
 
-  window.setRom = function(key, val, markMeasured) {
-    const cfg = ROM_CFG[key];
-    if (!cfg) return;
 
-    // Preserve a lone "-" mid-typing so hyperextension can be entered.
-    const raw = String(val).trim();
-    if (raw === "-" && cfg.signed) return;
+// ---------------------------------------------------------------------
+// Is this gauge a flexion gauge or an extension gauge?
+// The two types use different scales, so we check this a lot.
+// ---------------------------------------------------------------------
+function isFlexionGauge(gaugeName) {
+  if (gaugeName === "flexion-involved") {
+    return true;
+  }
+  if (gaugeName === "flexion-uninvolved") {
+    return true;
+  }
+  return false;
+}
 
-    let n = parseInt(raw, 10);
-    if (isNaN(n)) n = cfg.default;
-    if (cfg.min !== undefined) n = Math.max(cfg.min, n);
-    n = Math.min(cfg.max, n);
 
-    const input = document.getElementById("input-" + key);
-    // Don't fight the caret while the user is typing.
-    if (input.value !== String(n)) input.value = n;
-    document.getElementById("val-" + key).textContent = n;
+// ---------------------------------------------------------------------
+// The number a gauge falls back to if the box is empty or has junk in it.
+// ---------------------------------------------------------------------
+function defaultValueFor(gaugeName) {
+  if (gaugeName === "flexion-uninvolved") {
+    return 135;   // a normal knee bends to about 135 degrees
+  }
+  return 0;
+}
 
-    if (markMeasured !== false) MEASURED.add(key);
 
-    // Only a MEASURED gauge posts a value.
-    //
-    // The gauge still renders at a starting position so the control is
-    // usable, but the hidden field stays empty until the clinician
-    // touches it. Previously every gauge posted its default on save,
-    // which stored 0 degrees flexion on the involved side and 135 on
-    // the uninvolved side for a knee nobody had measured - and those
-    // fabricated values reached the agent prompt as "recorded by the
-    // clinician, do not contradict", with the deficit arithmetic
-    // turning them into the most alarming number in the prompt.
-    //
-    // MEASURED already existed and was already correct; it was driving
-    // the deficit display but not the values actually persisted.
-    document.getElementById("hidden-" + key).value =
-      MEASURED.has(key) ? n : "";
-
-    if (markMeasured !== false) MEASURED.add(key);
-
-    const arc = document.getElementById("arc-" + key);
-    if (arc) {
-      let pct = cfg.range ? (n + cfg.offset) / cfg.range : n / cfg.max;
-      pct = Math.max(0, Math.min(1, pct));
-      arc.style.strokeDashoffset = cfg.arcMax * (1 - pct);
-
-      // FIX 5: on the extension gauges a fuller arc means a WORSE finding,
-      // the opposite of flexion. Colour by severity so the visual language
-      // stops rewarding a maximum.
-      if (cfg.signed) {
-        arc.setAttribute("stroke",
-          n > 5  ? "var(--bs-danger,#dc3545)"  :
-          n > 0  ? "var(--bs-warning,#ffc107)" :
-          n < -5 ? "var(--bs-warning,#ffc107)" :
-                   "var(--bs-success,#198754)");
-      }
+// ---------------------------------------------------------------------
+// Keep a number inside the range that gauge allows.
+//
+// Flexion:   0 to 150 degrees.
+// Extension: -10 to 30 degrees, where 0 means the knee straightens
+//            fully, a positive number means it will not straighten,
+//            and a negative number means it bends backwards.
+// ---------------------------------------------------------------------
+function keepInRange(gaugeName, value) {
+  if (isFlexionGauge(gaugeName) === true) {
+    if (value < 0) {
+      value = 0;
     }
-    updateDeficit();
-  };
-
-  function updateDeficit() {
-    const display = document.getElementById("deficit-display");
-    if (!MEASURED.has("flexion-involved") || !MEASURED.has("flexion-uninvolved")) {
-      display.textContent = "—";
-      display.classList.add("unmeasured");
-      return;
+    if (value > 150) {
+      value = 150;
     }
-    const inv   = parseInt(document.getElementById("input-flexion-involved").value, 10)   || 0;
-    const uninv = parseInt(document.getElementById("input-flexion-uninvolved").value, 10) || 0;
-    display.textContent = Math.max(0, uninv - inv) + "°";
-    display.classList.remove("unmeasured");
+  } else {
+    if (value < -10) {
+      value = -10;
+    }
+    if (value > 30) {
+      value = 30;
+    }
+  }
+  return value;
+}
+
+
+// ---------------------------------------------------------------------
+// Work out how far along the arc to draw, as a fraction from 0 to 1.
+//
+// Flexion is easy because the scale starts at 0:
+//     90 degrees out of 150  ->  90 / 150  =  0.6
+//
+// Extension is harder because the scale starts at -10, so we first
+// slide the whole scale up by 10 to make the smallest value 0:
+//     -10 degrees  ->  -10 + 10 = 0    ->  0  / 40 = 0.0
+//       0 degrees  ->    0 + 10 = 10   ->  10 / 40 = 0.25
+//      30 degrees  ->   30 + 10 = 40   ->  40 / 40 = 1.0
+// The 40 is the total width of the scale (from -10 up to 30).
+// ---------------------------------------------------------------------
+function fractionOfArc(gaugeName, value) {
+  var fraction;
+
+  if (isFlexionGauge(gaugeName) === true) {
+    fraction = value / 150;
+  } else {
+    var shiftedValue = value + 10;
+    var scaleWidth = 40;
+    fraction = shiftedValue / scaleWidth;
   }
 
-  window.toggleSwitch = function(el) { el.classList.toggle("on"); };
+  if (fraction < 0) {
+    fraction = 0;
+  }
+  if (fraction > 1) {
+    fraction = 1;
+  }
+  return fraction;
+}
 
-  window.syncToggle = function(sw, inputId) {
-    document.getElementById(inputId).value = sw.classList.contains("on") ? "yes" : "no";
-  };
 
-  window.syncPainToggle = function() {
-    const flexOn = document.getElementById("sw-pain-flex").classList.contains("on");
-    const extOn  = document.getElementById("sw-pain-ext").classList.contains("on");
-    let val = "none";
-    if (flexOn && extOn) val = "both";
-    else if (flexOn) val = "flexion";
-    else if (extOn)  val = "extension";
-    document.getElementById("hidden-pain-movement").value = val;
-  };
+// ---------------------------------------------------------------------
+// Pick the colour of the extension arc.
+//
+// On the extension gauges a BIGGER number is a WORSE finding, which is
+// the opposite of the flexion gauges. A full arc would normally look
+// like a good result, so we colour it by severity instead.
+// ---------------------------------------------------------------------
+function colourForExtension(value) {
+  if (value > 5) {
+    return "var(--bs-danger,#dc3545)";    // red: cannot straighten at all
+  }
+  if (value > 0) {
+    return "var(--bs-warning,#ffc107)";   // amber: small loss
+  }
+  if (value < -5) {
+    return "var(--bs-warning,#ffc107)";   // amber: bends backwards a lot
+  }
+  return "var(--bs-success,#198754)";     // green: normal
+}
 
-  window.selectChip = function(el, groupId) {
-    document.getElementById(groupId).querySelectorAll(".chip").forEach(c => c.classList.remove("active"));
-    el.classList.add("active");
-  };
 
-  function init() {
-    setRom("flexion-involved",     {{ p.get('rom_flexion_involved')     | default(0, true)   | int }}, SERVER_HAS["flexion-involved"]);
-    setRom("flexion-uninvolved",   {{ p.get('rom_flexion_uninvolved')   | default(135, true) | int }}, SERVER_HAS["flexion-uninvolved"]);
-    setRom("extension-involved",   {{ p.get('rom_extension_involved')   | default(0, true)   | int }}, SERVER_HAS["extension-involved"]);
-    setRom("extension-uninvolved", {{ p.get('rom_extension_uninvolved') | default(0, true)   | int }}, SERVER_HAS["extension-uninvolved"]);
+// ---------------------------------------------------------------------
+// The main function. Called whenever a gauge value changes.
+//
+// gaugeName         which gauge, e.g. "flexion-involved"
+// newValue          the number the user typed or the button produced
+// countAsMeasured   true if this change came from the clinician,
+//                   false if we are just setting the starting position
+// ---------------------------------------------------------------------
+function setRom(gaugeName, newValue, countAsMeasured) {
 
-    // FIX 1: oninput keeps the hidden fields live, but a final sync on submit
-    // guarantees nothing is lost if focus is still inside a field when Save is
-    // tapped — the silent-wrong-value case.
-    document.getElementById("rom-form").addEventListener("submit", function() {
-      Object.keys(ROM_CFG).forEach(function(k) {
-        setRom(k, document.getElementById("input-" + k).value, MEASURED.has(k));
-      });
-    });
+  // If the user has only typed a minus sign so far, wait. They are
+  // probably about to type "-5" for a knee that bends backwards.
+  var typedText = String(newValue).trim();
+  if (typedText === "-" && isFlexionGauge(gaugeName) === false) {
+    return;
   }
 
-  document.addEventListener("DOMContentLoaded", init);
-})();
+  // Turn the text into a whole number.
+  var value = parseInt(typedText, 10);
+  if (isNaN(value) === true) {
+    value = defaultValueFor(gaugeName);
+  }
+
+  value = keepInRange(gaugeName, value);
+
+  // Update the number in the input box, but only if it is different.
+  // Rewriting it while someone is typing moves their cursor.
+  var inputBox = document.getElementById("input-" + gaugeName);
+  if (inputBox.value !== String(value)) {
+    inputBox.value = value;
+  }
+
+  // Update the big number shown inside the gauge.
+  document.getElementById("val-" + gaugeName).textContent = value;
+
+  // Remember that this gauge now holds a real measurement.
+  if (countAsMeasured !== false) {
+    measured[gaugeName] = true;
+  }
+
+  // Fill in the hidden field that actually gets saved.
+  // If the gauge was never measured we save nothing at all.
+  var hiddenField = document.getElementById("hidden-" + gaugeName);
+  if (measured[gaugeName] === true) {
+    hiddenField.value = value;
+  } else {
+    hiddenField.value = "";
+  }
+
+  // Draw the arc.
+  var arc = document.getElementById("arc-" + gaugeName);
+  if (arc !== null) {
+    var fraction = fractionOfArc(gaugeName, value);
+    var lengthToShow = ARC_LENGTH * fraction;
+    var offset = ARC_LENGTH - lengthToShow;
+    arc.style.strokeDashoffset = offset;
+
+    if (isFlexionGauge(gaugeName) === false) {
+      arc.setAttribute("stroke", colourForExtension(value));
+    }
+  }
+
+  updateDeficit();
+}
+
+
+// ---------------------------------------------------------------------
+// The plus and minus buttons.
+// ---------------------------------------------------------------------
+function adjustRom(gaugeName, amountToAdd) {
+  var inputBox = document.getElementById("input-" + gaugeName);
+  var currentValue = parseInt(inputBox.value, 10);
+
+  if (isNaN(currentValue) === true) {
+    currentValue = defaultValueFor(gaugeName);
+  }
+
+  setRom(gaugeName, currentValue + amountToAdd, true);
+}
+
+
+// ---------------------------------------------------------------------
+// The difference in bend between the two knees.
+// We only show this once BOTH flexion gauges have been measured,
+// otherwise the number would be based on a guess.
+// ---------------------------------------------------------------------
+function updateDeficit() {
+  var display = document.getElementById("deficit-display");
+
+  if (measured["flexion-involved"] === false) {
+    display.textContent = "—";
+    display.classList.add("unmeasured");
+    return;
+  }
+  if (measured["flexion-uninvolved"] === false) {
+    display.textContent = "—";
+    display.classList.add("unmeasured");
+    return;
+  }
+
+  var involved = parseInt(document.getElementById("input-flexion-involved").value, 10);
+  var uninvolved = parseInt(document.getElementById("input-flexion-uninvolved").value, 10);
+
+  if (isNaN(involved) === true) {
+    involved = 0;
+  }
+  if (isNaN(uninvolved) === true) {
+    uninvolved = 0;
+  }
+
+  var difference = uninvolved - involved;
+  if (difference < 0) {
+    difference = 0;
+  }
+
+  display.textContent = difference + "°";
+  display.classList.remove("unmeasured");
+}
+
+
+// ---------------------------------------------------------------------
+// The on/off switches.
+// ---------------------------------------------------------------------
+function toggleSwitch(switchElement) {
+  switchElement.classList.toggle("on");
+}
+
+function syncToggle(switchElement, hiddenFieldId) {
+  if (switchElement.classList.contains("on") === true) {
+    document.getElementById(hiddenFieldId).value = "yes";
+  } else {
+    document.getElementById(hiddenFieldId).value = "no";
+  }
+}
+
+// The two pain switches together produce one saved value.
+function syncPainToggle() {
+  var flexionOn = document.getElementById("sw-pain-flex").classList.contains("on");
+  var extensionOn = document.getElementById("sw-pain-ext").classList.contains("on");
+  var result;
+
+  if (flexionOn === true && extensionOn === true) {
+    result = "both";
+  } else if (flexionOn === true) {
+    result = "flexion";
+  } else if (extensionOn === true) {
+    result = "extension";
+  } else {
+    result = "none";
+  }
+
+  document.getElementById("hidden-pain-movement").value = result;
+}
+
+
+// ---------------------------------------------------------------------
+// The chip buttons. Only one chip in a group can be selected.
+// ---------------------------------------------------------------------
+function selectChip(clickedChip, groupId) {
+  var group = document.getElementById(groupId);
+  var allChips = group.querySelectorAll(".chip");
+  var i;
+
+  for (i = 0; i < allChips.length; i = i + 1) {
+    allChips[i].classList.remove("active");
+  }
+
+  clickedChip.classList.add("active");
+}
+
+
+// ---------------------------------------------------------------------
+// Set everything up when the page finishes loading.
+// ---------------------------------------------------------------------
+function startUp() {
+
+  // Put each gauge at its starting position. The third argument is
+  // false when the server had no saved value, which stops the starting
+  // position from being treated as a real measurement.
+  setRom("flexion-involved",
+         {{ p.get('rom_flexion_involved') | default(0, true) | int }},
+         serverHasValue["flexion-involved"]);
+
+  setRom("flexion-uninvolved",
+         {{ p.get('rom_flexion_uninvolved') | default(135, true) | int }},
+         serverHasValue["flexion-uninvolved"]);
+
+  setRom("extension-involved",
+         {{ p.get('rom_extension_involved') | default(0, true) | int }},
+         serverHasValue["extension-involved"]);
+
+  setRom("extension-uninvolved",
+         {{ p.get('rom_extension_uninvolved') | default(0, true) | int }},
+         serverHasValue["extension-uninvolved"]);
+
+  // When Save is pressed, run every gauge through setRom one last time.
+  // Without this, a number still being typed when Save is tapped could
+  // be lost, and the case would save the previous value instead.
+  var form = document.getElementById("rom-form");
+  form.addEventListener("submit", function() {
+    var i;
+    var gaugeName;
+    var inputBox;
+
+    for (i = 0; i < GAUGE_NAMES.length; i = i + 1) {
+      gaugeName = GAUGE_NAMES[i];
+      inputBox = document.getElementById("input-" + gaugeName);
+      setRom(gaugeName, inputBox.value, measured[gaugeName]);
+    }
+  });
+}
+
+document.addEventListener("DOMContentLoaded", startUp);
 </script>
 
 {% endblock %}

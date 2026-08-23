@@ -34,6 +34,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import fitz  # PyMuPDF
 
 from backend.constants import (
+    GEN_MODEL,
     INV_ALLOWED_UPLOAD_TYPES,
     INV_DEFAULT_BODY_PART,
     INV_EXTRACTION_MODEL,
@@ -62,8 +63,8 @@ from backend.constants import (
 logger = logging.getLogger(__name__)
 
 # Text model already used elsewhere in the system.
-TEXT_MODEL = "llama-3.3-70b-versatile"
-
+#TEXT_MODEL = "llama-3.3-70b-versatile"
+TEXT_MODEL = GEN_MODEL
 # A PDF page carrying fewer characters than this is treated as a scan.
 _TEXT_LAYER_MIN_CHARS = 120
 

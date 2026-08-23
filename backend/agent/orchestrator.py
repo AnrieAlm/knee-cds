@@ -54,9 +54,10 @@ from langchain_groq import ChatGroq
 # ===========================================================
 # Settings
 # ===========================================================
+from backend.constants import GEN_MODEL
+LLM_MODEL = GEN_MODEL
 
-
-LLM_MODEL = "llama-3.3-70b-versatile"
+#LLM_MODEL = "llama-3.3-70b-versatile"
 
 
 # addition 2
@@ -64,25 +65,29 @@ LLM_MODEL = "llama-3.3-70b-versatile"
 # local keeps all data on the machine, hosted gives better reasoning at the cost of sending
 # case data and retrieved corpus text to a third party
 LLM_BACKEND = os.getenv('LLM_BACKEND', 'groq')
+LOCAL_MODEL = os.getenv('LOCAL_MODEL', 'llama3.1:8b')
 
 
 def buildLlm():
     if LLM_BACKEND == 'local':
-        # imported here so langchain-ollama is only needed when the local path is used
         from langchain_ollama import ChatOllama
-        print('using local backend: llama3.2:3b')
+        print('using local backend:', LOCAL_MODEL)
         return ChatOllama(
-            model='llama3.2:3b',
+            model=LOCAL_MODEL,
             temperature=0,
-            num_predict=350,
-            num_ctx=2048,
+            num_predict=1200,
+            num_ctx=4096,
         )
-
     print('using hosted backend:', LLM_MODEL)
     return ChatGroq(
         model=LLM_MODEL,
         temperature=0,
-        max_tokens=500,
+        # Raised from 700, then settled at 1500 on 23 August 2026. The
+        # replacement generation model emits reasoning tokens drawn from the
+        # same completion budget, so the original ceiling truncated the ReAct
+        # trace. A 2500 ceiling in turn exceeded the free-tier limit of 8000
+        # tokens per minute once retrieval context was included.
+        max_tokens=1500,
         api_key=os.getenv('GROQ_API_KEY'),
     )   # groq hosted - much bigger model LLM_MODEL = "llama3.2:3b"     # was "llama3.1:8b"
 
@@ -126,6 +131,11 @@ CLINICAL REASONING WITH PHYSICAL FINDINGS:
 test suggestions. A muscle grade marked "(pain limited)" or "(effusion limited)" \
 reflects inhibition, NOT neurological weakness - do not interpret it as a \
 neurological finding.
+OUTPUT FORMAT:
+- Suggest 3-5 tests, highest priority first.
+- One sentence of rationale per test, with its citation inline.
+- Stop after the last test. Do NOT write a closing summary, do NOT restate
+  the constraints above, and do NOT list what you excluded or why.
 """
 
 
@@ -136,7 +146,10 @@ neurological finding.
 @tool
 def search_corpus(query: str) -> str:
     """Search the clinical knowledge corpus for evidence. Returns top passages.
-    Call this ONCE with your best query. Do not call it multiple times."""
+    Call once per structure or test you are considering — e.g. separately for
+    'McMurray test meniscus' and 'valgus stress MCL'. A single query anchored to
+    one hypothesis will only return evidence for that hypothesis."""
+    
     results = retrieve(query)
     if not results:
         return "No relevant evidence found."
@@ -370,7 +383,7 @@ def _extract_retrieved(response):
 # document rather than inside physical. Keyword with a None default so the
 # existing positional calls keep working.
 def run_agent_only(query, safety_facts, physical_dict=None, investigations=None,
-                   deferrals=None):
+                   deferrals=None, involved_side=None):
     # thin wrapper so main.py can call the agent without re-running the
     # deterministic gates (those already ran when the case was created)
     llm = buildLlm() 
@@ -399,7 +412,9 @@ def run_agent_only(query, safety_facts, physical_dict=None, investigations=None,
     # the clinician's own findings before any radiology report, mirroring the
     # tab order. Only clinician-verified transcriptions are included; that gate
     # is enforced in investigation_context, not here.
-    investigation_block = "\n\n" + build_investigation_context_from_list(investigations)
+    investigation_block = "\n\n" + build_investigation_context_from_list(
+        investigations, involved_side=involved_side
+    )
 
     # inject the pre-computed safety facts, the physical findings, the prior
     # investigations and the clinician question

@@ -1,7 +1,15 @@
 """
 Ottawa Knee Rule - deterministic Python implementation.
-Source: Stiell et al. (1995). Implementation of the Ottawa Knee Rule.
-JAMA, 274(11), 827-831.
+Source: Stiell IG, Greenberg GH, Wells GA, McKnight RD, Cwinn AA,
+Cacciotti T, McDowell I, Smith NA (1995). Derivation of a decision rule
+for the use of radiography in acute knee injuries. Annals of Emergency
+Medicine, 26(4), 405-413. doi:10.1016/S0196-0644(95)70106-0
+
+Prospectively validated in Stiell et al. (1996), JAMA, 275(8), 611-615.
+
+Derivation cohort: 1,047 adults; sensitivity 1.0 (95% CI 0.95-1.0),
+specificity 0.54. Patients under 18 were excluded at derivation, so the
+rule's operating characteristics are undefined in that population.
 
 Rule: X-ray is indicated if ANY of the following are present:
   1. Age 55 or older
@@ -26,7 +34,7 @@ class OttawaResult:
     xray_indicated: bool
     triggered_criteria: list[str]
     rationale: str
-    source: str = "Stiell et al. (1995). JAMA, 274(11), 827-831."
+    source: str = "Stiell et al. (1995). Ann Emerg Med, 26(4), 405-413."
 
 def apply_ottawa_knee_rule(data: OttawaInput) -> OttawaResult:
     """

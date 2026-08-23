@@ -8,13 +8,37 @@ from backend.rag.retriever import retrieve
 from langchain_groq import ChatGroq
 import os
 from dotenv import load_dotenv
-
+from backend.constants import GEN_MODEL
 load_dotenv()
 
 # same model as orchestrator.py - keep this in sync if you change it there
-LLM_MODEL = 'llama-3.3-70b-versatile'
+#LLM_MODEL = 'llama-3.3-70b-versatile'
+LLM_MODEL = GEN_MODEL
+LLM_BACKEND = os.getenv('LLM_BACKEND', 'groq')
+LOCAL_MODEL = os.getenv('LOCAL_MODEL', 'llama3.1:8b')
+# build the LLM once at module load - reused for every 
+# 
+# chat call
 
-# build the LLM once at module load - reused for every chat call
+def _build_llm():
+    if LLM_BACKEND == 'local':
+        from langchain_ollama import ChatOllama
+        return ChatOllama(
+            model=LOCAL_MODEL,
+            temperature=0,
+            num_predict=800,
+            num_ctx=4096,
+        )
+    from langchain_groq import ChatGroq
+    return ChatGroq(
+        model=LLM_MODEL,
+        temperature=0,
+        max_tokens=1500,
+        api_key=os.getenv('GROQ_API_KEY'),
+    )
+
+
+_llm = _build_llm()
 _llm = ChatGroq(
     model=LLM_MODEL,
     temperature=0,

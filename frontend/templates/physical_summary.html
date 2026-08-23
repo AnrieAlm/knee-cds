@@ -482,10 +482,11 @@
       </div>
     </a>
 
-  <!-- ── Continue to summary ────────────────────────────────── -->
+
+      <!-- ── Continue to investigations ──────────────────────────── -->
     <div class="phys-continue">
-      <a href="/cases/{{ case.id }}/summary" class="btn btn-primary w-100">
-        Continue to summary
+      <a href="/cases/{{ case.id }}/investigations" class="btn btn-primary w-100">
+        Continue to investigations
         <i class="bi bi-arrow-right ms-1"></i>
       </a>
       <div class="continue-hint">
@@ -493,7 +494,7 @@
           You can continue with a partial examination — the agent works with
           whatever has been recorded.
         {% else %}
-          Generates test suggestions from the findings recorded above.
+          Record any imaging or reports before the summary is generated.
         {% endif %}
       </div>
     </div>

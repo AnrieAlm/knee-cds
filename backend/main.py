@@ -61,6 +61,7 @@ D10 Scaffold has no CORS middleware at all. Cygnus previously set
 =====================================================================
 """
 
+import os
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -101,7 +102,11 @@ from backend.investigation_routes import router as investigation_router
 
 # Admin router (read-only head-of-department oversight)
 from backend.admin import router as admin_router
-
+from backend.investigation_context import (
+    investigation_summary_rows,
+    visible_investigations,
+)
+from backend.constants import INV_VISUAL_CLASS, INV_STATUS_LABELS
 
 app = FastAPI(
     title="Knee CDS API",
@@ -193,11 +198,23 @@ def _case_fingerprint(case: dict) -> str:
     Short signature of the inputs a suggestion was built from.
 
     If this changes, the stored suggestion is out of date and must be
-    regenerated. Covers both history and physical, so submitting
-    physical findings correctly invalidates a suggestion that was
-    built from history alone.
+    regenerated. Covers history, physical, and the investigations the
+    agent is actually permitted to see, so submitting physical findings
+    or verifying a report correctly invalidates a suggestion built
+    without them.
+
+    Investigations are filtered through the same provenance gate the
+    agent reads (investigation_context.visible_investigations) rather
+    than fingerprinting the raw array. A pending, failed or rejected
+    upload never reaches the model, so it must not invalidate a
+    suggestion — otherwise a rejected file triggers a regeneration that
+    produces identical output and appends a duplicate agentLog entry.
     """
-    return str(case.get("history", {})) + str(case.get("physical", {}))
+    return (
+        str(case.get("history", {}))
+        + str(case.get("physical", {}))
+        + str(visible_investigations(case))
+    )
 
 
 def _build_patient_context(assessment: dict, history: dict | None) -> str:
@@ -527,8 +544,9 @@ async def case_summary(request: Request, case_id: str):
         {
             "case": case,
             "active_tab": "summary",
-            "user": user,
-            "is_admin_view": False,
+            "investigation_rows": investigation_summary_rows(case),
+            "visual_classes": INV_VISUAL_CLASS,
+            "status_labels": INV_STATUS_LABELS,
         },
     )
 # ===================================================================
@@ -787,6 +805,7 @@ async def case_suggest(request: Request, case_id: str):
     result = run_agent_only(
         query, safety_facts, case.get("physical"), case.get("investigations"),
         deferrals=case.get("deferrals"),
+        involved_side=(case.get("history") or {}).get("involved_side"),
     )
 
     # Append-only audit log: query, retrieved chunks, and output.
@@ -797,7 +816,7 @@ async def case_suggest(request: Request, case_id: str):
         "suggestion": result["suggestion"],
         "generated_by_uid": user.get("uid"),
     })
-
+    assessment["agent_backend"] = os.getenv("LLM_BACKEND", "groq")
     assessment["agent_suggestion"] = result["suggestion"]
     assessment["agent_suggestion_fingerprint"] = _case_fingerprint(case)
     assessment["agent_suggestion_status"] = "done"
@@ -864,6 +883,7 @@ async def case_suggest_async(request: Request, case_id: str):
     physical_snapshot = case.get("physical")
     investigations_snapshot = case.get("investigations")
     deferrals_snapshot = case.get("deferrals")
+    involved_side_snapshot = (case.get("history") or {}).get("involved_side")
     author_uid = user.get("uid")
 
     print(f"[suggest-async] query:\n{query}")
@@ -881,6 +901,7 @@ async def case_suggest_async(request: Request, case_id: str):
             result = run_agent_only(
                 query, safety_facts, physical_snapshot, investigations_snapshot,
                 deferrals=deferrals_snapshot,
+                involved_side=involved_side_snapshot,
             )
 
             store.append_agent_log(case_id, {
@@ -892,7 +913,7 @@ async def case_suggest_async(request: Request, case_id: str):
 
             fresh = store.get_case(case_id)
             current = fresh.get("assessment", {}) if fresh else {}
-
+            assessment["agent_backend"] = os.getenv("LLM_BACKEND", "groq")
             current["agent_suggestion"] = result["suggestion"]
             current["agent_suggestion_fingerprint"] = current_fingerprint
             current["agent_suggestion_status"] = "done"

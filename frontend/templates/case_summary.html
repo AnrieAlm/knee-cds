@@ -28,6 +28,57 @@
 
 <h2 class="h5 mb-3">Case Summary</h2>
 
+<style>
+  .inv-sum-badge { font-size: 0.7rem; padding: 0.25rem 0.5rem; border-radius: 3px; }
+  .inv-sum-badge.inv-verified { background: #475569; color: #fff; }
+  .inv-sum-badge.inv-unverified { background: #fff; color: #b45309; border: 1px solid #b45309; }
+  .inv-sum-badge.inv-problem { background: #fff; color: #6b7280; border: 1px solid #d1d5db; }
+</style>
+
+{% if investigation_rows %}
+<div class="card mb-3">
+    <div class="card-header bg-light fw-bold">Prior Investigations</div>
+    <div class="card-body">
+        {% for row in investigation_rows %}
+        {% set vclass = visual_classes.get(row.status, 'inv-problem') %}
+        <div class="{% if not loop.last %}border-bottom pb-3 mb-3{% endif %}">
+            <div class="d-flex justify-content-between align-items-start mb-2">
+                <div>
+                    <strong>{{ row.descriptor }}</strong>
+                    <span class="inv-sum-badge {{ vclass }} ms-2">
+                        {{ status_labels.get(row.status, 'Unknown status') }}
+                    </span>
+                </div>
+                {% if row.has_source_file %}
+                <a href="/cases/{{ case.id }}/investigations/{{ row.inv_id }}/source"
+                   class="btn btn-sm btn-outline-secondary" target="_blank">Source</a>
+                {% endif %}
+            </div>
+            {% if row.agent_visible %}
+                {% if row.findings %}
+                <div class="mb-2">
+                    <small class="text-muted">Findings</small>
+                    <p class="mb-1" style="white-space: pre-wrap;">{{ row.findings }}</p>
+                </div>
+                {% endif %}
+                {% if row.impression %}
+                <div>
+                    <small class="text-muted">Impression</small>
+                    <p class="mb-0" style="white-space: pre-wrap;">{{ row.impression }}</p>
+                </div>
+                {% endif %}
+            {% else %}
+                <p class="small text-muted mb-0">
+                    Awaiting clinician verification. Not shared with the agent and not
+                    included in this summary.
+                </p>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
 {% if not case.assessment %}
     <!-- no exam has been run yet -->
     <div class="alert alert-secondary">
@@ -121,10 +172,59 @@
     <!-- ========================================================= -->
     {% if not case.assessment.red_flag.escalate_immediately %}
     <div class="card mb-3">
-        <div class="card-header bg-light fw-bold">
+                <div class="card-header bg-light fw-bold">
             Suggested next tests
             <span class="badge badge-ai-suggested">AI-suggested &mdash; review before use</span>
         </div>
+
+        {# ---------------------------------------------------------
+           Special tests already performed.
+
+           Rendered from case.physical, not from the model. The fields
+           are a closed set written by physical_edit_special.html, so
+           this list is determinable and belongs on the deterministic
+           side of the boundary. Asking the agent to restate performed
+           tests would put recorded clinical findings through the
+           generation layer, where a misreported result is a safety
+           error introduced for formatting.
+
+           Sits OUTSIDE #suggestion-body: renderSuggestion() clears
+           that element's innerHTML when the poll completes.
+        --------------------------------------------------------- #}
+        <div class="card-body border-bottom pb-2">
+            <p class="mb-1 fw-bold">
+                Already performed
+                <span class="badge badge-deterministic">Deterministic</span>
+            </p>
+            {% set special_tests = [
+              ('test_lachman','Lachman test'), ('test_anterior_drawer','Anterior drawer'),
+              ('test_pivot_shift','Pivot shift'), ('test_posterior_drawer','Posterior drawer'),
+              ('test_sag_sign','Sag sign'), ('test_valgus_0','Valgus stress 0°'),
+              ('test_valgus_30','Valgus stress 30°'), ('test_varus_0','Varus stress 0°'),
+              ('test_varus_30','Varus stress 30°'), ('test_mcmurray','McMurray test'),
+              ('test_thessaly','Thessaly test'), ('test_apley_compression','Apley compression'),
+              ('test_apley_distraction','Apley distraction'),
+              ('test_patellar_apprehension','Patellar apprehension'),
+            ] %}
+            {% set phys = case.physical or {} %}
+            {% set done = [] %}
+            {% for field, name in special_tests %}
+              {% if phys.get(field) not in ['', 'not_done', 'not_tested', None] %}
+                {% set _ = done.append((name, phys.get(field))) %}
+              {% endif %}
+            {% endfor %}
+
+            {% if done %}
+                <ul class="mb-0 small">
+                {% for name, result in done %}
+                    <li>{{ name }} &mdash; {{ result }}</li>
+                {% endfor %}
+                </ul>
+            {% else %}
+                <p class="text-muted small mb-0">No special tests recorded yet.</p>
+            {% endif %}
+        </div>
+
         <div class="card-body" id="suggestion-body">
 
             {% if case.assessment.agent_suggestion %}

@@ -230,6 +230,12 @@ INV_MAX_UPLOAD_BYTES = 15 * 1024 * 1024   # under Groq's 20MB request ceiling
 # Vision model used for extraction only. Never used for image interpretation.
 INV_EXTRACTION_MODEL = "qwen/qwen3.6-27b"
 
+
+# Generation model. Centralised on 23 August 2026 after
+# llama-3.3-70b-versatile was decommissioned by the provider, which broke
+# three call sites at once. Hosted model availability sits outside the
+# project's control, so the identifier lives in one place.
+GEN_MODEL = "openai/gpt-oss-120b"
 # Context-window guards on free text pulled from reports
 INV_MAX_FINDINGS_CHARS = 1500
 INV_MAX_IMPRESSION_CHARS = 600
