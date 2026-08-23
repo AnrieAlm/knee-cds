@@ -29,22 +29,15 @@ def _build_llm():
             num_predict=800,
             num_ctx=4096,
         )
-    from langchain_groq import ChatGroq
     return ChatGroq(
         model=LLM_MODEL,
         temperature=0,
-        max_tokens=1500,
+        max_tokens=800,
         api_key=os.getenv('GROQ_API_KEY'),
     )
 
 
 _llm = _build_llm()
-_llm = ChatGroq(
-    model=LLM_MODEL,
-    temperature=0,
-    max_tokens=500,
-    api_key=os.getenv('GROQ_API_KEY'),
-)
 
 
 def run_chat(message: str, case: dict) -> str:
