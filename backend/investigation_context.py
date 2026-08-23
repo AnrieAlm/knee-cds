@@ -275,10 +275,20 @@ def build_investigation_context(case: Dict[str, Any]) -> str:
 # ---------------------------------------------------------------------------
 
 def investigation_summary_rows(case: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Rows for the Investigations section of the case summary template."""
+    """Rows for the Investigations section of the case summary template.
+
+    Carries both gates through to the template. A record the agent could not
+    see is shown as withheld rather than hidden, so the clinician can tell
+    that an attached document was set aside and why. The summary therefore
+    reports the same set of findings the agent was given, which is the
+    property that makes the page usable as a record of the assessment.
+    """
     rows: List[Dict[str, Any]] = []
+    involved_side = (case.get("history") or {}).get("involved_side")
 
     for inv in all_investigations(case):
+        verified = inv.get("extraction_status") in INV_AGENT_VISIBLE_STATUSES
+        other_limb = side_conflicts(inv, involved_side)
         rows.append({
             "inv_id": inv.get("inv_id"),
             "descriptor": _descriptor(inv),
@@ -287,7 +297,8 @@ def investigation_summary_rows(case: Dict[str, Any]) -> List[Dict[str, Any]]:
             "impression": inv.get("report_impression") or "",
             "has_source_file": bool(inv.get("file_ref")),
             "original_filename": inv.get("original_filename"),
-            "agent_visible": inv.get("extraction_status") in INV_AGENT_VISIBLE_STATUSES,
+            "other_limb": other_limb,
+            "agent_visible": verified and not other_limb,
         })
 
     return rows

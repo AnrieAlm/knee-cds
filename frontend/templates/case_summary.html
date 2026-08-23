@@ -67,7 +67,16 @@
                     <p class="mb-0" style="white-space: pre-wrap;">{{ row.impression }}</p>
                 </div>
                 {% endif %}
-            {% else %}
+            
+            
+                {% elif row.other_limb %}
+                    <p class="small text-muted mb-0">
+                        This study concerns the other limb and was not included in
+                        the clinical reasoning for this assessment.
+                    </p>
+                
+            
+                {% else %}
                 <p class="small text-muted mb-0">
                     Awaiting clinician verification. Not shared with the agent and not
                     included in this summary.
