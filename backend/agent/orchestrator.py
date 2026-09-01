@@ -305,13 +305,3 @@ def run_agent_only(query, safety_facts, physical_dict=None, investigations=None,
         "retrieved": retrieved,
     }
 
-if __name__ == "__main__":
-
-    # Example inputs. Replace field values with whatever your dataclasses
-    # actually require - these are illustrative.
-    #
-    # This block is for eyeballing the flow end to end. It will only run
-    # once the field names below match your real dataclasses.
-
-    print("This is a manual smoke test. Edit the inputs to match your "
-          "dataclass fields, then run:  python -m backend.agent.orchestrator")
