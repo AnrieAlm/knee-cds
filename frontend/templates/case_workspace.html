@@ -49,6 +49,28 @@
     </li>
 </ul>
 
+{% if case.assessment and case.assessment.red_flag and case.assessment.red_flag.escalate_immediately %}
+<div class="alert alert-danger border-danger" role="alert">
+    <h4 class="alert-heading">
+        &#9888; Red Flag &mdash; Assessment Halted
+        <span class="badge badge-deterministic">Deterministic</span>
+    </h4>
+    <p class="mb-2"><strong>Triggered:</strong></p>
+    <ul class="mb-2">
+        {% for flag in case.assessment.red_flag.triggered_flags %}
+        <li>{{ flag }}</li>
+        {% endfor %}
+    </ul>
+    <hr>
+    <p class="mb-2">{{ case.assessment.red_flag.action }}</p>
+    {% if active_tab != 'physical' %}
+    <a href="{{ base }}/physical" class="btn btn-outline-danger btn-sm">
+        Continue documenting findings <span class="fw-normal">(record-keeping only — imaging/agent suggestions remain unavailable)</span>
+    </a>
+    {% endif %}
+</div>
+{% endif %}
+
 {% block tab_content %}{% endblock %}
 
 {% endblock %}

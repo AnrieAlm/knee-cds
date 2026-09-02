@@ -100,27 +100,7 @@
     </div>
 {% else %}
 
-    <!-- ========================================================= -->
-    <!-- RED-FLAG HALT BANNER (only shows if a red flag fired)      -->
-    <!-- a persistent banner, not a dismissible modal, because a    -->
-    <!-- safety halt must stay visible                              -->
-    <!-- ========================================================= -->
-    {% if case.assessment.red_flag.escalate_immediately %}
-    <div class="alert alert-danger border-danger" role="alert">
-        <h4 class="alert-heading">
-            &#9888; Red Flag &mdash; Assessment Halted
-            <span class="badge badge-deterministic">Deterministic</span>
-        </h4>
-        <p class="mb-2"><strong>Triggered:</strong></p>
-        <ul class="mb-2">
-            {% for flag in case.assessment.red_flag.triggered_flags %}
-            <li>{{ flag }}</li>
-            {% endfor %}
-        </ul>
-        <hr>
-        <p class="mb-0">{{ case.assessment.red_flag.action }}</p>
-    </div>
-    {% endif %}
+    
 
     <!-- ========================================================= -->
     <!-- SYSTEM CHECK: deterministic results (always shown)         -->
