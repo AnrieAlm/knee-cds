@@ -75,7 +75,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.exception_handlers import http_exception_handler
 from starlette.exceptions import HTTPException as StarletteHTTPException
 import starlette.status as status
-
+from dataclasses import asdict
 from backend import store
 from backend.auth import get_current_user
 
@@ -748,6 +748,8 @@ async def case_exam_submit(request: Request, case_id: str):
         # Records the age the rules were evaluated against, so a later
         # re-screen can be compared against the original inputs
         "screened_age": age,
+        "ottawa_inputs": asdict(ottawa_input),
+        "pittsburgh_inputs": asdict(pittsburgh_input),
     }
 
     store.save_assessment(case_id, assessment)

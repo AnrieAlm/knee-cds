@@ -63,7 +63,9 @@ import starlette.status as status
 
 from backend.case_access import load_case_for_read, load_case_for_write
 from backend.safety.neuro_trigger import check_neuro_trigger, check_inhibition
+from backend.rules.ottawa import apply_ottawa_knee_rule, OttawaInput
 
+from backend.rules.pittsburgh import apply_pittsburgh_knee_rule, PittsburghInput
 
 from backend.constants import (
     DEFERRAL_REASON_LABELS,
@@ -197,7 +199,86 @@ def _coerce_int(val):
         print(f"[physical] could not coerce to int: {val!r}")
         return None
 
+def _recompute_assessment(case_id: str, case: dict, physical: dict, store) -> None:
+    """
+    Re-run Ottawa and Pittsburgh after a physical exam save.
 
+    The physical exam re-asks a subset of the same criteria the intake
+    form asked at triage — flexion to 90 degrees, fibular head
+    tenderness, patellar tenderness — because those findings are more
+    reliably assessed hands-on than at first presentation. Without this
+    recompute, a clinician who corrects one of those findings during
+    the physical exam leaves the stored Ottawa/Pittsburgh determination
+    reflecting the earlier, less precise triage answer.
+
+    Skipped when there is no assessment yet (exam not run), or when a
+    red flag has already halted the pathway — imaging determinations
+    are moot once the case is escalating regardless of their value.
+
+    Runs unconditionally on every physical section save rather than
+    only where a known overlapping field exists today, because the
+    alternative — remembering to wire this in wherever a future
+    physical field happens to duplicate a rule input — is the same
+    failure shape as the bug this function exists to fix.
+    """
+    assessment = case.get("assessment")
+    if not assessment or assessment.get("red_flag_positive"):
+        return
+
+    ottawa_inputs = assessment.get("ottawa_inputs")
+    pittsburgh_inputs = assessment.get("pittsburgh_inputs")
+
+    # Cases assessed before this field existed have no raw inputs to
+    # recompute from. The original computed result stands, same as
+    # before this fix existed.
+    if not ottawa_inputs or not pittsburgh_inputs:
+        return
+
+    def _answered(field: str) -> bool:
+        return physical.get(field) in ("yes", "no")
+
+    effective_ottawa = dict(ottawa_inputs)
+
+    if _answered("able_to_flex_90"):
+        effective_ottawa["unable_to_flex_90"] = (
+            physical.get("able_to_flex_90") == "no"
+        )
+
+    if _answered("fibular_head_tenderness"):
+        effective_ottawa["fibula_head_tenderness"] = (
+            physical.get("fibular_head_tenderness") == "yes"
+        )
+
+    if _answered("patellar_tenderness"):
+        # "Isolated" patella tenderness means the patella is tender and
+        # no other BONY point is — specifically the other bony points
+        # this system records: fibular head and tibial tubercle.
+        # Soft-tissue findings (popliteal, collateral) are not part of
+        # this criterion.
+        other_bony_tender = (
+            physical.get("fibular_head_tenderness") == "yes"
+            or physical.get("tibial_tubercle_tenderness") == "yes"
+        )
+        effective_ottawa["isolated_patella_tenderness"] = (
+            physical.get("patellar_tenderness") == "yes" and not other_bony_tender
+        )
+
+    ottawa_result = apply_ottawa_knee_rule(OttawaInput(**effective_ottawa))
+    pittsburgh_result = apply_pittsburgh_knee_rule(PittsburghInput(**pittsburgh_inputs))
+
+    assessment["ottawa"] = {
+        "xray_indicated": ottawa_result.xray_indicated,
+        "triggered_criteria": ottawa_result.triggered_criteria,
+        "rationale": ottawa_result.rationale,
+    }
+    assessment["pittsburgh"] = {
+        "xray_indicated": pittsburgh_result.xray_indicated,
+        "triggered_criteria": pittsburgh_result.triggered_criteria,
+        "rationale": pittsburgh_result.rationale,
+    }
+    assessment["ottawa_inputs"] = effective_ottawa
+
+    store.save_assessment(case_id, assessment)
 # ===================================================================
 # Section merge
 # ===================================================================
@@ -297,6 +378,8 @@ def _merge_physical_section(
     physical["inhibition_noted"] = check_inhibition(physical)
 
     store.save_physical(case_id, physical)
+    _recompute_assessment(case_id, case, physical, store)
+
     return physical
 
 
