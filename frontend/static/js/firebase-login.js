@@ -73,7 +73,7 @@ window.addEventListener("load", function () {
     }
 });
 
-// booklet helper: show/hide sign-out button based on the cookie token
+//  helper: show/hide sign-out button based on the cookie token
 function updateUI(cookie) {
     var token = parseCookieToken(cookie);
     var signOutBtn = document.getElementById("sign-out");
@@ -84,7 +84,7 @@ function updateUI(cookie) {
     }
 }
 
-// booklet helper: extract the token value from the cookie string
+//  helper: extract the token value from the cookie string
 function parseCookieToken(cookie) {
     var strings = cookie.split(';');
     for (let i = 0; i < strings.length; i++) {

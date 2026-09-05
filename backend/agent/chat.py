@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 from backend.constants import GEN_MODEL
 load_dotenv()
 
-# same model as orchestrator.py - keep this in sync if you change it there
+# same model as orchestrator.py -note tp self- (keep this in sync if you change it there)
 #LLM_MODEL = 'llama-3.3-70b-versatile'
 LLM_MODEL = GEN_MODEL
 LLM_BACKEND = os.getenv('LLM_BACKEND', 'groq')
